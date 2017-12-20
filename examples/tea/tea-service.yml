@@ -1,0 +1,39 @@
+- group:
+    name: teacup
+    services:
+      - name: tea-ingress
+        protocol: tcp
+        port: 10
+      - name: tea-egress
+        protocol: tcp
+        port: 20
+
+- group:
+    name: teapot
+    services:
+      - name: water-ingress
+        protocol: tcp
+        port: 30
+      - name: tea-leaves-ingress
+        protocol: tcp
+        port: 40
+
+- group:
+    name: tea-maker
+    services:
+      - name: request
+        protocol: tcp
+        port: 50
+
+
+- application:
+    name: tea-service
+
+    components:
+      - tea-maker => teapot[water-ingress]
+      - tea-maker => teapot[tea-leaves-ingress]
+      - teapot => teacup[tea-ingress]
+
+    expose:
+      - tea-maker[request]
+      - teacup[tea-egress]

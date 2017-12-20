@@ -1,0 +1,377 @@
+#!/usr/bin/env python3
+
+import collections
+import json
+import random
+
+import requests
+
+from perfectstorm.clients import PollingExecutor
+
+
+COMMON_DOCKER_ARGS = [
+     '-e', 'CONSUL_ALLOW_PRIVILEGED_PORTS=',
+     '--net', 'host',
+]
+
+COMMON_CONSUL_ARGS = [
+    'consul', 'agent',
+    '-datacenter=$DATACENTER',
+    '-client=0.0.0.0', '-advertise=$CLIENT_ADDRESS',
+    '-dns-port=53', '-recursor', '8.8.8.8', '-recursor', '8.8.4.4',
+]
+
+SERVER_RECIPE = {
+    'type': 'docker',
+    'content': json.dumps({
+        'run': [
+            COMMON_DOCKER_ARGS +
+            ['-e', 'CONSUL_LOCAL_CONFIG={"skip_leave_on_interrupt":true}'] +
+            COMMON_CONSUL_ARGS +
+            ['-server', '-bootstrap-expect=1'],
+        ],
+    }),
+    'options': {
+        'consulDns': False,
+    },
+}
+
+CLIENT_RECIPE = {
+    'type': 'docker',
+    'content': json.dumps({
+        'run': [
+            COMMON_DOCKER_ARGS +
+            ['-e', 'CONSUL_LOCAL_CONFIG={"leave_on_terminate":true}'] +
+            COMMON_CONSUL_ARGS +
+            ['-retry-join=$SERVER_ADDRESS'],
+        ],
+    }),
+    'options': {
+        'consulDns': False,
+    },
+}
+
+SERVER_JOIN_WAN_RECIPE = {
+    'type': 'docker',
+    'content': json.dumps({
+        'exec': [
+            ['consul', 'join', '-wan', '$WAN_ADDRESS'],
+        ],
+    }),
+}
+
+
+class BaseConsulManager:
+
+    def __init__(self, executor):
+        self.executor = executor
+        self.api = executor.api
+
+        self.nodes_group = executor.nodes_group
+        self.server_nodes_group = executor.server_nodes_group
+
+        self.server_group = executor.server_group
+        self.clients_group = executor.clients_group
+
+        self.server_recipe = executor.server_recipe
+        self.client_recipe = executor.client_recipe
+        self.join_wan_recipe = executor.join_wan_recipe
+
+    def get_server_node(self):
+        server, = self.server_group.members(status='UP')
+        return self.api.shortcuts.get_node_for(server)
+
+    def get_server_node_address(self):
+        server_node = self.get_server_node()
+        return self.api.shortcuts.get_address_for(server_node)
+
+
+class BaseConsulDeployer(BaseConsulManager):
+
+    def deploy(self, recipe, group, node, options=None, params=None):
+        recipe_arguments = {
+            'recipe': recipe.identifier,
+            'options': options,
+            'params': params,
+            'targetNode': node['cloud_id'],
+            'addTo': group.identifier,
+        }
+
+        trigger = self.api.triggers.create(name='recipe', arguments=recipe_arguments)
+
+        trigger.wait()
+
+
+class ConsulServerManager(BaseConsulDeployer):
+
+    def update(self):
+        if not self.server_group.members(status='UP'):
+            self.start_new_server()
+
+    def pick_server_node(self):
+        candidates = self.server_nodes_group.members(status='UP')
+
+        if candidates:
+            node, = candidates
+        else:
+            candidates = self.nodes_group.members(status='UP')
+            node = random.choice(candidates)
+
+        self.server_nodes_group.add_members([node['cloud_id']])
+
+        return node
+
+    def start_new_server(self):
+        server_node = self.pick_server_node()
+        server_node_ip = self.api.shortcuts.get_address_for(server_node)
+
+        recipe_params = {
+            'DATACENTER': self.nodes_group.identifier,
+            'SERVER_ADDRESS': server_node_ip,
+            'CLIENT_ADDRESS': server_node_ip,
+        }
+
+        self.deploy(self.server_recipe, self.server_group, server_node, params=recipe_params)
+
+        print('Started new server on', server_node['name'])
+
+
+class ConsulClientsManager(BaseConsulDeployer):
+
+    def update(self):
+        server_node = self.get_server_node()
+        server_node_ip = self.api.shortcuts.get_address_for(server_node)
+
+        # Collect the IDs of all Consul clients.
+        clients = self.clients_group.members(status='UP')
+        client_ids = [client['cloud_id'] for client in clients]
+
+        # Retrieve the list of nodes running Consul, and include the server too.
+        nodes_with_consul = self.nodes_group.members(
+            engine={
+                '_id': {
+                    '$in': client_ids,
+                },
+            },
+        )
+
+        nodes_with_consul_ids = [node['cloud_id'] for node in nodes_with_consul]
+        nodes_with_consul_ids.append(server_node['cloud_id'])
+
+        # Retrieve the list of nodes that are NOT running the clients.
+        nodes_without_clients = self.nodes_group.members(
+            status='UP',
+            _id={
+                '$nin': nodes_with_consul_ids,
+            },
+        )
+
+        # Start clients on the nodes that are missing them.
+        for client_node in nodes_without_clients:
+            self.start_new_client(client_node, server_node_ip)
+
+    def start_new_client(self, client_node, server_node_ip):
+        client_node_ip = self.api.shortcuts.get_address_for(client_node)
+
+        recipe_params = {
+            'DATACENTER': self.nodes_group.identifier,
+            'SERVER_ADDRESS': server_node_ip,
+            'CLIENT_ADDRESS': client_node_ip,
+        }
+
+        self.deploy(self.client_recipe, self.clients_group, client_node, params=recipe_params)
+
+        print('Started new client on', client_node['name'])
+
+
+class ConsulServicesManager(BaseConsulManager):
+
+    def update(self):
+        running_services = set(self.iter_running_services())
+        registered_services = set(self.iter_registered_services())
+
+        add_services = running_services - registered_services
+        remove_services = registered_services - running_services
+
+        self.register_services(add_services)
+        self.deregister_services(remove_services)
+
+    def iter_running_services(self):
+        groups = self.api.groups.all()
+        nodes = [node['cloud_id'] for node in self.nodes_group.members(status='UP')]
+
+        for group in groups:
+            members = group.members(
+                status='UP',
+                engine={
+                    'cloud_id': {
+                        '$in': nodes,
+                    },
+                },
+            )
+
+            for member in members:
+                try:
+                    node = self.api.shortcuts.get_node_for(member)
+                    node_ip = self.api.shortcuts.get_address_for(node)
+                except AssertionError:
+                    continue
+
+                if group['services']:
+                    yield group['name'], node_ip, 0
+                    for service in group['services']:
+                        service_name = '-'.join((group['name'], service['name']))
+                        yield service_name, node_ip, service['port']
+
+    def iter_registered_services(self):
+        server_node_ip = self.get_server_node_address()
+
+        url = 'http://{}:8500/v1/catalog/services'.format(server_node_ip)
+        service_catalog = requests.get(url).json()
+
+        for service_name in service_catalog:
+            url = 'http://{}:8500/v1/catalog/service/{}'.format(server_node_ip, service_name)
+            service_list = requests.get(url).json()
+
+            for service in service_list:
+                if 'ps-consul' not in service['ServiceTags']:
+                    continue
+                yield service_name, service['Address'], service['ServicePort']
+
+    def register_services(self, services):
+        for service_name, service_address, service_port in services:
+            service = {
+                'Name': service_name,
+                'Port': service_port,
+                'Tags': ['ps-consul'],
+            }
+
+            url = 'http://{}:8500/v1/agent/service/register'.format(service_address)
+            requests.put(url, json=service)
+
+            print('Registered service {} on {}'.format(service_name, service_address))
+
+    def deregister_services(self, services):
+        for service_name, service_address, service_port in services:
+            url = 'http://{}:8500/v1/agent/service/deregister/{}'.format(service_address, service_name)
+            requests.put(url)
+
+            print('Deregistered service {} from {}'.format(service_name, service_address))
+
+
+class ConsulFederationManager(BaseConsulDeployer):
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.federate_server_groups = self.executor.federate_server_groups
+
+    def update(self):
+        for group in self.federate_server_groups:
+            self.federate_with(group)
+
+    def federate_with(self, group):
+        remote_server_containers = group.members(status='UP')
+        if len(remote_server_containers) != 1:
+            return
+
+        remote_server_container = remote_server_containers[0]
+        remote_server_node = self.api.shortcuts.get_node_for(remote_server_container)
+        remote_server_node_ip = self.api.shortcuts.get_address_for(remote_server_node)
+
+        local_server, = self.server_group.members(status='UP')
+
+        recipe_params = {
+            'WAN_ADDRESS': remote_server_node_ip,
+        }
+
+        self.deploy(self.join_wan_recipe, self.server_group, local_server, params=recipe_params)
+
+        print('Joined {}'.format(group.identifier.rstrip('-consul-server-node')))
+
+
+class ConsulExecutor(PollingExecutor):
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._snapshot = {}
+
+    def add_arguments(self):
+        super().add_arguments()
+        self.parser.add_argument('-n', '--nodes-pool', required=True)
+        self.parser.add_argument('-f', '--federate', action='append', default=[])
+
+    def setup(self, *args, **kwargs):
+        super().setup(*args, **kwargs)
+
+        self.retrieve_groups()
+
+        self.manager_classes = [
+            ConsulServerManager,
+            ConsulClientsManager,
+            ConsulServicesManager,
+        ]
+
+        if self.federate_server_groups:
+            self.manager_classes.append(ConsulFederationManager)
+
+    def retrieve_groups(self):
+        self.nodes_group = self.api.groups.get(self.options.nodes_pool)
+
+        self.server_group = self.api.groups.update_or_create(
+            self.nodes_group.identifier + '-consul-server', {'query': {}})
+        self.clients_group = self.api.groups.update_or_create(
+            self.nodes_group.identifier + '-consul-clients', {'query': {}})
+
+        self.server_nodes_group = self.api.groups.update_or_create(
+            self.nodes_group.identifier + '-consul-server-nodes', {'query': {}})
+
+        self.server_recipe = self.api.recipes.update_or_create('consul-server', SERVER_RECIPE)
+        self.client_recipe = self.api.recipes.update_or_create('consul-client', CLIENT_RECIPE)
+        self.join_wan_recipe = self.api.recipes.update_or_create('consul-server-join-wan', SERVER_JOIN_WAN_RECIPE)
+
+        self.federate_server_groups = []
+
+        for name in self.options.federate:
+            self.federate_server_groups.append(self.api.groups.get(name + '-consul-server'))
+
+        self._groups_retrieved = True
+
+    def retrieve_status(self):
+        status = {}
+
+        for group in self.api.groups.all():
+            members = group.members(status='UP')
+            status[group.identifier] = members
+
+        return status
+
+    def poll(self):
+        current_status = self.retrieve_status()
+        past_status = self._snapshot
+        self._snapshot = current_status
+
+        if len(current_status) != len(past_status):
+            return True
+
+        for name in current_status:
+            if name not in past_status:
+                return True
+
+            current_members = current_status[name]
+            past_members = past_status[name]
+
+            if len(current_members) != len(past_members):
+                return True
+            if any(member not in past_members for member in current_members):
+                return True
+
+        return False
+
+    def run(self):
+        for cls in self.manager_classes:
+            manager = cls(self)
+            manager.update()
+
+
+if __name__ == '__main__':
+    ConsulExecutor().main()

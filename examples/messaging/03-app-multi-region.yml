@@ -1,0 +1,161 @@
+- group:
+    name: docker-hosts
+    query:
+      type: PHYSICAL_SERVER
+      tenant:
+        cloud:
+          provider: DOCKER
+
+
+
+- group:
+    name: us-west-1
+    query:
+      type: PHYSICAL_SERVER
+      tenant:
+        cloud:
+          provider: DOCKER
+          name: us-west-1
+
+
+
+- group:
+    name: eu-central-1
+    query:
+      type: PHYSICAL_SERVER
+      tenant:
+        cloud:
+          provider: DOCKER
+          name: eu-central-1
+
+
+
+- group:
+    name: ap-southeast-1
+    query:
+      type: PHYSICAL_SERVER
+      tenant:
+        cloud:
+          provider: DOCKER
+          name: ap-southeast-1
+
+
+
+- group:
+    name: frontend
+    query:
+      type: CONTAINER
+      image:
+        name:
+          $startsWith: 'andreacorbellini/messaging:'
+    services:
+      - name: http
+        protocol: tcp
+        port: 80
+
+
+
+- group:
+    name: mysql-primary
+    services:
+      - name: mysql
+        protocol: tcp
+        port: 3306
+
+
+
+- group:
+    name: mysql-replica
+    services:
+      - name: mysql
+        protocol: tcp
+        port: 3306
+
+
+
+- application:
+    name: messaging
+
+    components:
+      - frontend => mysql-primary[mysql]
+      - frontend => mysql-replica[mysql]
+      - mysql-replica => mysql-primary[mysql]
+
+    expose:
+      - frontend[http]
+
+
+
+- recipe:
+    name: frontend
+    type: docker
+
+    content: |
+      run:
+        - -p 80:80 -e DB_HOST=mysql-primary.service.us-west-1.consul -e DB_REPLICA_HOST=mysql-replica.service.consul -e DB_USER=messaging -e DB_PASSWORD=messaging -e DB_NAME=messaging andreacorbellini/messaging:latest
+
+    targetAnyOf: docker-hosts
+
+
+
+- recipe:
+    name: mysql-primary
+    type: docker
+
+    content: |
+      run:
+        - -p 3306:3306 -e MYSQL_DATABASE=messaging -e MYSQL_USER=messaging -e MYSQL_PASSWORD=messaging -e MYSQL_ROOT_PASSWORD=root mysql:$MYSQL_VERSION --server-id=$SERVER_ID --log-bin=mysql-bin --sync-binlog=1 --gtid-mode=on --enforce-gtid-consistency=true
+
+    params:
+      MYSQL_VERSION: '5.7'
+      SERVER_ID: '1'
+    targetAnyOf: us-west-1
+    addTo: mysql-primary
+
+
+
+- recipe:
+    name: mysql-replica
+    type: docker
+
+    content: |
+      run:
+        - -p 3306:3306 -e MYSQL_ROOT_PASSWORD=root mysql:$MYSQL_VERSION --server-id=$SERVER_ID --log-bin=mysql-bin --sync-binlog=1 --gtid-mode=on --enforce-gtid-consistency=true
+    params:
+      MYSQL_VERSION: '5.7'
+      SERVER_ID: '1'
+
+    targetAnyOf: docker-hosts
+    addTo: mysql-replica
+
+
+
+- recipe:
+    name: mysql-make-primary
+    type: docker
+
+    content: |
+      exec:
+        - mysql -proot -e "STOP SLAVE"
+        - mysql -proot -e "RESET MASTER"
+
+    addTo: mysql-primary
+
+
+
+- recipe:
+    name: mysql-make-replica
+    type: docker
+
+    content: |
+      exec:
+        - mysql -proot -e "STOP SLAVE"
+        - mysql -proot -e "RESET MASTER"
+        - mysqldump -h mysql-primary.service.us-west-1.consul --compress --all-databases --triggers --routines --events --flush-privileges -proot -r /var/lib/mysql/dump.sql
+        - mysql -proot -e "SOURCE /var/lib/mysql/dump.sql"
+        - rm -f /var/lib/mysql/dump.sql
+        - mysql -proot -e "CHANGE MASTER TO MASTER_HOST='mysql-primary.service.us-west-1.consul', MASTER_USER='root', MASTER_PASSWORD='root', MASTER_AUTO_POSITION=1"
+        - mysql -proot -e "START SLAVE"
+
+    targetAllIn: mysql-replica
+    addTo: mysql-replica

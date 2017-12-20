@@ -1,0 +1,11 @@
+setuptools >= 20
+
+-e ./core
+
+-e ./lib
+
+-e ./cli
+
+-e ./executors/consul
+-e ./executors/docker
+-e ./executors/loadbalancer

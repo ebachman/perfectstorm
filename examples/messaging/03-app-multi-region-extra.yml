@@ -1,0 +1,163 @@
+- group:
+    name: us-west-1-frontend
+    query:
+      type: CONTAINER
+      image:
+        name:
+          $startsWith: 'andreacorbellini/messaging:'
+      engine:
+        tenant:
+          cloud:
+            provider: DOCKER
+            name: us-west-1
+    services:
+      - name: http
+        protocol: tcp
+        port: 80
+
+
+
+- group:
+    name: us-west-1-mysql-replica
+    query:
+      image:
+        name:
+          $startsWith: 'mysql:'
+      engine:
+        tenant:
+          cloud:
+            provider: DOCKER
+            name: us-west-1
+    services:
+      - name: mysql
+        protocol: tcp
+        port: 3306
+
+
+
+- group:
+    name: eu-central-1-frontend
+    query:
+      type: CONTAINER
+      image:
+        name:
+          $startsWith: 'andreacorbellini/messaging:'
+      engine:
+        tenant:
+          cloud:
+            provider: DOCKER
+            name: eu-central-1
+    services:
+      - name: http
+        protocol: tcp
+        port: 80
+
+
+
+- group:
+    name: eu-central-1-mysql-replica
+    query:
+      image:
+        name:
+          $startsWith: 'mysql:'
+      engine:
+        tenant:
+          cloud:
+            provider: DOCKER
+            name: eu-central-1
+    services:
+      - name: mysql
+        protocol: tcp
+        port: 3306
+
+
+
+- group:
+    name: ap-southeast-1-frontend
+    query:
+      type: CONTAINER
+      image:
+        name:
+          $startsWith: 'andreacorbellini/messaging:'
+      engine:
+        tenant:
+          cloud:
+            provider: DOCKER
+            name: ap-southeast-1
+    services:
+      - name: http
+        protocol: tcp
+        port: 80
+
+
+
+- group:
+    name: ap-southeast-1-mysql-replica
+    query:
+      image:
+        name:
+          $startsWith: 'mysql:'
+      engine:
+        tenant:
+          cloud:
+            provider: DOCKER
+            name: ap-southeast-1
+    services:
+      - name: mysql
+        protocol: tcp
+        port: 3306
+
+
+
+- application:
+    name: messaging-multi-region
+
+    components:
+      - us-west-1-frontend => mysql-primary[mysql]
+      - us-west-1-frontend => us-west-1-mysql-replica[mysql]
+      - eu-central-1-frontend => mysql-primary[mysql]
+      - eu-central-1-frontend => eu-central-1-mysql-replica[mysql]
+      - ap-southeast-1-frontend => mysql-primary[mysql]
+      - ap-southeast-1-frontend => ap-southeast-1-mysql-replica[mysql]
+      - us-west-1-mysql-replica => mysql-primary[mysql]
+      - eu-central-1-mysql-replica => mysql-primary[mysql]
+      - ap-southeast-1-mysql-replica => mysql-primary[mysql]
+
+
+    expose:
+      - us-west-1-frontend[http]
+      - eu-central-1-frontend[http]
+      - ap-southeast-1-frontend[http]
+
+
+
+- group:
+    name: us-west-1-consul-clients
+    services:
+      - name: dns
+        protocol: udp
+        port: 53
+
+
+
+- group:
+    name: us-west-1-frontend-load-balancer
+    services:
+      - name: http
+        protocol: tcp
+        port: 80
+
+
+
+- application:
+    name: messaging-us-west-1
+
+    components:
+      - us-west-1-frontend => mysql-primary[mysql]
+      - us-west-1-frontend => us-west-1-mysql-replica[mysql]
+      - us-west-1-mysql-replica => mysql-primary[mysql]
+      - us-west-1-frontend => us-west-1-consul-clients[dns]
+      - us-west-1-frontend-load-balancer => us-west-1-frontend[http]
+
+    expose:
+      - us-west-1-frontend-load-balancer[http]

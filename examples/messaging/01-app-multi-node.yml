@@ -1,0 +1,69 @@
+- group:
+    name: docker-hosts
+    query:
+      type: PHYSICAL_SERVER
+      tenant:
+        cloud:
+          provider: DOCKER
+
+
+
+- group:
+    name: frontend
+    query:
+      type: CONTAINER
+      image:
+        name:
+          $startsWith: 'andreacorbellini/messaging:'
+    services:
+      - name: http
+        protocol: tcp
+        port: 80
+
+
+
+- group:
+    name: mysql-primary
+    services:
+      - name: mysql
+        protocol: tcp
+        port: 3306
+
+
+
+- application:
+    name: messaging
+
+    components:
+      - frontend => mysql-primary[mysql]
+
+    expose:
+      - frontend[http]
+
+
+
+- recipe:
+    name: frontend
+    type: docker
+
+    content: |
+      run:
+        - -p 80:80 -e DB_HOST=mysql-primary.service.consul -e DB_USER=messaging -e DB_PASSWORD=messaging -e DB_NAME=messaging andreacorbellini/messaging:latest
+
+    targetAnyOf: docker-hosts
+
+
+
+- recipe:
+    name: mysql-primary
+    type: docker
+
+    content: |
+      run:
+        - -p 3306:3306 -e MYSQL_DATABASE=messaging -e MYSQL_USER=messaging -e MYSQL_PASSWORD=messaging -e MYSQL_ROOT_PASSWORD=root mysql:$MYSQL_VERSION --server-id=$SERVER_ID --log-bin=mysql-bin --sync-binlog=1 --gtid-mode=on --enforce-gtid-consistency=true
+
+    params:
+      MYSQL_VERSION: '5.7'
+      SERVER_ID: '1'
+    targetAnyOf: docker-hosts
+    addTo: mysql-primary

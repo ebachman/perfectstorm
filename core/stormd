@@ -1,0 +1,160 @@
+#!/usr/bin/env python3
+
+import argparse
+import logging
+import os
+import socket
+import subprocess
+import sys
+
+import tornado.httpserver
+import tornado.ioloop
+import tornado.log
+import tornado.wsgi
+
+
+def address(addr):
+    if ':' not in addr:
+        host, port = addr, None
+    else:
+        host, port = addr.rsplit(':', 1)
+
+        if ']' in port:
+            # This is actually an IPv6 address.
+            host, port = addr, None
+        elif not port:
+            # Port is empty, use the default.
+            port = None
+        else:
+            port = int(port)
+
+    if not host:
+        raise ValueError(addr)
+
+    return host, port
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(
+        usage='%(prog)s [OPTIONS]',
+        description='Perfect Storm Core API Server')
+
+    parser.add_argument(
+        '-b', '--bind', metavar='ADDRESS', type=address, default=[], action='append',
+        help='Address to bind. This can be an IPv4 address, and IPv6 address or a host name. The address can '
+             'optionally include a port number. If no port is specified, the port specified with -p/--port is '
+             'used, or the default port if -p/--port is not provided. This option can be specified multiple '
+             'times to bind multiple addresses. Default: 127.0.0.1')
+    parser.add_argument(
+        '-p', '--port', metavar='PORT', type=int, default=8000, dest='default_port',
+        help='Port to bind. See also -b/--bind. Default: 8000')
+
+    parser.add_argument(
+        '--no-tasks', action='store_false', dest='run_tasks',
+        help='Disable running of background tasks')
+
+    parser.add_argument(
+        '-B', '--bootstrap', action='store_true',
+        help='Perform initial bootstrapping and update resource. More specifically, with this option the database is '
+             'created or updated (unless --no-migrations is specified) and documentation is built (unless --no-docs '
+             'is specified)')
+    parser.add_argument(
+        '--bootstrap-only', action='store_true',
+        help='Bootstrap only, do not start the web server. This implies --bootstrap')
+    parser.add_argument(
+        '--no-migrations', action='store_false', dest='run_migrations',
+        help='Do not run database migrations during bootstrapping')
+    parser.add_argument(
+        '--no-docs', action='store_false', dest='run_build_docs',
+        help='Do not build documentation during bootstrapping')
+
+    options = parser.parse_args()
+
+    if not options.bind:
+        options.bind.append(('127.0.0.1', None))
+
+    return options
+
+
+def run_subprocess(args, phase):
+    proc = subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    if proc.returncode != 0:
+        print('Error {}:'.format(phase), file=sys.stderr, flush=True)
+        sys.stderr.buffer.write(proc.stdout)
+        sys.exit(1)
+
+
+def setup_logging():
+    formatter = tornado.log.LogFormatter(
+        fmt='[%(asctime)s] %(color)s%(message)s%(end_color)s',
+        datefmt='%Y-%m-%d %H:%M:%S')
+
+    handler = logging.StreamHandler(stream=sys.stdout)
+    handler.setFormatter(formatter)
+
+    logger = logging.getLogger('tornado')
+    logger.setLevel(logging.INFO)
+    logger.addHandler(handler)
+
+
+def run():
+    options = parse_args()
+
+    os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'teacup.settings')
+
+    if options.bootstrap or options.bootstrap_only:
+        if options.run_migrations:
+            run_subprocess(['django-admin', 'migrate'], 'running migrations')
+
+        if options.run_build_docs:
+            run_subprocess(['django-admin', 'builddocs'], 'building docs')
+
+        print('Bootstrap completed', file=sys.stderr)
+
+        if options.bootstrap_only:
+            return
+
+    setup_logging()
+
+    from teacup.apiserver import tasks
+    from teacup.wsgi import application
+
+    container = tornado.wsgi.WSGIContainer(application)
+    http_server = tornado.httpserver.HTTPServer(container)
+
+    for host, port in options.bind:
+        if port is None:
+            port = options.default_port
+        if host and host[0] == '[' and host[-1] == ']':
+            bind_host = host[1:-1]
+        else:
+            bind_host = host
+
+        try:
+            http_server.bind(port, bind_host)
+        except socket.error as exc:
+            print('Failed to bind {}:{}: {}'.format(host, port, exc.args[1]), file=sys.stderr)
+            sys.exit(1)
+
+        print('Listening on http://{}:{}/'.format(host, port), file=sys.stderr, flush=True)
+
+    if options.run_tasks:
+        tasks.run_tasks()
+
+    try:
+        http_server.start(0)
+    except KeyboardInterrupt:
+        # This code is executed in the main process.
+        http_server.stop()
+        tasks.stop_tasks()
+    else:
+        # This code is executed in the forked sub-processes.
+        ioloop = tornado.ioloop.IOLoop.current()
+        try:
+            ioloop.start()
+        except KeyboardInterrupt:
+            ioloop.stop()
+
+
+if __name__ == '__main__':
+    run()

@@ -1,0 +1,40 @@
+html, body {
+    margin:0;
+    padding:0;
+    overflow:hidden;
+    font-family: sans-serif;
+}
+
+#app-list {
+    position: relative;
+    z-index: 100;
+}
+
+#app-list > li {
+    list-style-type: none;
+    display: inline-block;
+    padding: 5px;
+    border-radius: 4px;
+    background-color: #e65100;
+    margin-right: 10px;
+}
+
+#app-list > li > a {
+    text-decoration: none;
+    color: #fff;
+}
+
+svg {
+    position:fixed;
+    top:0;
+    left:0;
+    height:100%;
+    width:100%;
+}
+
+.node {}
+
+.link {
+    stroke: #000;
+    stroke-width: 2px;
+}

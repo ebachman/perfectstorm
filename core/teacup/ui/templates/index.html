@@ -1,0 +1,26 @@
+{% load static %}<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  
+  <title>The Perfect Storm of Application and Service Specification, Discovery, Visualization and Deployment</title>
+
+  <!-- Third party JS Libaries -->
+  <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.2.1/jquery.js"></script>
+  <script type="text/javascript" src="http://d3js.org/d3.v4.min.js" ></script>
+  <script type="text/javascript" src="http://d3js.org/d3-selection-multi.v1.js"></script>
+  <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/underscore.js/1.8.3/underscore-min.js"></script>
+  <!-- Custom JS Libary -->
+  <script type="text/javascript" src="{% static 'js/stormy.js' %}"></script>
+  <!-- Styles -->
+  <link rel="stylesheet" type="text/css" href="{% static 'css/stormy.css' %}">
+</head>
+
+<body>
+  <ul id="app-list"></ul>
+  <svg></svg>
+</body>
+
+</html>

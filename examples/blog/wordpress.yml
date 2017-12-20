@@ -1,0 +1,51 @@
+- group:
+    name: blog-nodes
+    query:
+      type: PHYSICAL_SERVER
+      tenant:
+        cloud:
+          provider: DOCKER
+
+- group:
+    name: wordpress
+    query:
+      type: CONTAINER
+      image:
+        name:
+          $startsWith: 'wordpress:'
+    services:
+      - name: http
+        protocol: tcp
+        port: 80
+
+- group:
+    name: mysql
+    services:
+      - name: mysql
+        protocol: tcp
+        port: 3306
+
+- application:
+    name: blog
+
+    components:
+      - wordpress => mysql[mysql]
+
+    expose:
+      - wordpress[http]
+
+- recipe:
+    name: wordpress
+    type: docker
+    content: |
+      run:
+        - -p 80:80 -e WORDPRESS_DB_HOST=mysql.service.consul -e WORDPRESS_DB_USER=wordpress -e WORDPRESS_DB_PASSWORD=wordpress wordpress:latest
+    targetAnyOf: blog-nodes
+
+- recipe:
+    name: mysql
+    type: docker
+    content: |
+      run:
+        - -p 3306:3306 -e MYSQL_DATABASE=wordpress -e MYSQL_USER=wordpress -e MYSQL_PASSWORD=wordpress mysql:5.7
+    targetAnyOf: blog-nodes

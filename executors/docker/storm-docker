@@ -1,0 +1,184 @@
+#!/usr/bin/env python3
+
+import argparse
+import contextlib
+import functools
+import os.path
+import random
+import re
+import shlex
+import subprocess
+
+import yaml
+
+from perfectstorm.clients.triggers import TriggerExecutor, RecipeTriggerHandler
+
+
+@contextlib.contextmanager
+def substitute_env(env):
+    orig_env, os.environ = os.environ, env
+
+    try:
+        yield
+    finally:
+        os.environ = orig_env
+
+
+def expandvars(lst, env):
+    with substitute_env(env):
+        return [os.path.expandvars(s) for s in lst]
+
+
+def expand_commands(commands, params):
+    expanded_commands = []
+
+    for args in commands:
+        if isinstance(args, str):
+            args = shlex.split(args)
+        args = expandvars(args, params)
+        expanded_commands.append(args)
+
+    return expanded_commands
+
+
+def find_required_ports(commands):
+    required_ports = set()
+
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument('-p', '--publish', action='append', default=[])
+
+    for args in commands:
+        try:
+            opts, ignored_opts = parser.parse_known_args(args)
+        except SystemExit:
+            continue
+
+        for port_spec in opts.publish:
+            # XXX Very simple match, does not take into account all cases.
+            host_port, container_port = port_spec.split(':')
+            required_ports.add(host_port)
+
+    return required_ports
+
+
+def find_node_with_free_ports(nodes_pool, required_ports):
+    if required_ports:
+        conditions = []
+
+        for port in required_ports:
+            options_regex = r'.*"ports"\s*:\s*\[[^]]*"%s:.*' % re.escape(port)
+
+            conditions.append({
+                'engine': {
+                    'status': 'UP',
+                    'options': {
+                        '$regex': options_regex,
+                    },
+                },
+            })
+
+        busy_nodes = nodes_pool.members({
+            '$and': [
+                {'status': 'UP'},
+                {'$or': conditions},
+            ],
+        })
+
+        busy_nodes_ids = [node['cloud_id'] for node in busy_nodes]
+    else:
+        busy_nodes_ids = []
+
+    candidate_nodes = nodes_pool.members({
+        'status': 'UP',
+        '_id': {
+            '$nin': busy_nodes_ids,
+        },
+    })
+
+    return random.choice(candidate_nodes)
+
+
+def run_docker(node_ip, args):
+    docker_command = ['docker', '-H', node_ip] + args
+
+    process = subprocess.run(docker_command, input=b'', check=True, stdout=subprocess.PIPE)
+
+    return process.stdout.decode().strip().split('\n')
+
+
+class DockerRecipeHandler(RecipeTriggerHandler):
+
+    def retrieve_recipe(self):
+        super().retrieve_recipe()
+
+        recipe_content = yaml.safe_load(self.recipe['content'])
+
+        if 'run' in recipe_content and 'exec' in recipe_content:
+            raise ValueError("Cannot specify both 'run' and 'exec' at the same time")
+
+        if 'run' in recipe_content:
+            self.action = 'docker_run'
+            commands = recipe_content['run']
+        elif 'exec' in recipe_content:
+            self.action = 'docker_exec'
+            commands = recipe_content['exec']
+        elif 'rm' in recipe_content:
+            self.action = 'docker_rm'
+            commands = [recipe_content['rm']]
+        else:
+            raise ValueError("One of 'run', 'exec' or 'rm' must be specified")
+
+        self.commands = expand_commands(commands, self.recipe_params)
+
+    def filter_nodes(self, group):
+        if self.action == 'docker_rm':
+            return group.members()
+        else:
+            return group.members(status='UP')
+
+    def choose_node(self, group):
+        if self.action != 'docker_run':
+            raise ValueError("'targetAnyOf' is not supported when using 'exec' or 'rm'")
+
+        required_ports = find_required_ports(self.commands)
+        return find_node_with_free_ports(group, required_ports)
+
+    def run_recipe(self, node):
+        getattr(self, self.action)(node)
+
+    def docker_run(self, node):
+        node_ip = self.api.shortcuts.get_address_for(node)
+
+        prepend_args = ['run', '-d']
+
+        if self.recipe_options.get('consulDns', True):
+            prepend_args += ['--dns', '172.17.0.1']
+
+        for args in self.commands:
+            new_resources = run_docker(node_ip, prepend_args + args)
+
+            for resource_id in new_resources:
+                self.create_resource(resource_id)
+
+    def docker_exec(self, node):
+        docker_host = self.api.shortcuts.get_node_for(node)
+        docker_host_ip = self.api.shortcuts.get_address_for(docker_host)
+
+        prepend_args = ['exec', node['name']]
+
+        for args in self.commands:
+            run_docker(docker_host_ip, prepend_args + args)
+            self.update_resource(node['cloud_id'])
+
+    def docker_rm(self, node):
+        docker_host = self.api.shortcuts.get_node_for(node)
+        docker_host_ip = self.api.shortcuts.get_address_for(docker_host)
+
+        args = ['rm', node['name']] + self.commands[0]
+        run_docker(docker_host_ip, args)
+
+        self.delete_resource(node['cloud_id'])
+
+
+if __name__ == '__main__':
+    TriggerExecutor(trigger_handler=DockerRecipeHandler).main()
