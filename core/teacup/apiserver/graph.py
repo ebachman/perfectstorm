@@ -1,3 +1,32 @@
+# Copyright (c) 2017, Composure.ai
+# Copyright (c) 2017, Andrea Corbellini
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+#
+# 1. Redistributions of source code must retain the above copyright notice, this
+#    list of conditions and the following disclaimer.
+#
+# 2. Redistributions in binary form must reproduce the above copyright notice,
+#    this list of conditions and the following disclaimer in the documentation
+#    and/or other materials provided with the distribution.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+#
+# The views and conclusions contained in the software and documentation are those
+# of the authors and should not be interpreted as representing official policies,
+# either expressed or implied, of the Perfect Storm Project.
+
 import abc
 import re
 import threading
@@ -11,6 +40,8 @@ _connection_pool = threading.local()
 
 OPERATORS = {}
 TOP_LEVEL_OPERATORS = {}
+
+_find_unsafe = re.compile(r'\W').search
 
 
 class GraphException(Exception):
@@ -35,7 +66,8 @@ class ValueType:
         self.name = name
 
     def validate(self, value):
-        if not isinstance(value, self.type):
+        expected_types = self.type if isinstance(self.type, tuple) else (self.type,)
+        if type(value) not in expected_types:
             raise QueryParseError('Invalid value: {!r}, expected a {}'.format(value, self.name))
         return value
 
@@ -49,15 +81,14 @@ class ListOf:
         try:
             return [self.subtype.validate(item) for item in value]
         except TypeError:
-            raise QueryParseError('Invalid value: {!r}, expected a list of {}'.format(value, self.name))
+            raise QueryParseError('Invalid value: {!r}, expected a list of {}'.format(value, self.subtype.name))
 
 
 STRING = ValueType(str, 'string')
-NUMBER = ValueType((int, float), 'number')
+INT = ValueType(int, 'int')
 BOOLEAN = ValueType(bool, 'boolean')
-NULL = ValueType(type(None), 'null')
 
-ELEMENTARY_TYPE = ValueType((str, int, float, bool, type(None)), 'string, number, boolean or null')
+ELEMENTARY_TYPE = ValueType((str, int, bool), 'string, int or boolean')
 
 
 def get_connection():
@@ -89,6 +120,29 @@ def close_connection():
     del _connection_pool.connection
 
 
+def escape_value(value):
+    typ = type(value)
+
+    if typ in (int, bool):
+        return repr(value)
+    elif typ is str:
+        value = value.replace('\\', '\\\\')
+        if "'" not in value:
+            return "'" + value + "'"
+        else:
+            return '"' + value.replace('"', r'\"') + '"'
+    else:
+        # Assume it's a container type.
+        return '[' + ', '.join(escape_value(item) for item in value) + ']'
+
+
+def escape_name(label):
+    if not _find_unsafe(label):
+        return label
+    else:
+        return '`{}`'.format(label.replace('`', '``'))
+
+
 def parse_query(mapping):
     if contains_operators(mapping):
         return parse_top_level_operators(mapping)
@@ -102,7 +156,7 @@ def parse_query(mapping):
             if contains_operators(value):
                 query &= parse_operators(key, value)
             else:
-                query &= RelatedQuery(parse_query(value))
+                query &= RelatedQuery(key, parse_query(value))
         else:
             query &= PropertyEquals(key, value)
 
@@ -159,12 +213,12 @@ def parse_object_id_query(mapping):
     for op, value in mapping.items():
         if op == '$eq':
             query &= ObjectIdEquals(value)
+        elif op == '$ne':
+            query &= ~ObjectIdEquals(value)
         elif op == '$in':
             query &= ObjectIdIn(value)
         elif op == '$nin':
-            query &= ObjectIdNotIn(value)
-        elif op == '$ne':
-            query &= ObjectIdNotEquals(value)
+            query &= ~ObjectIdIn(value)
         else:
             raise QueryParseError('Queries on _id support only $eq, $ne, $in and $nin, got: {}'.format(op))
 
@@ -223,7 +277,7 @@ class Node(BaseNode):
         if self.label is None:
             return '({})'.format(self.name)
         else:
-            return '({}:{})'.format(self.name, self.label)
+            return '({}:{})'.format(self.name, escape_name(self.label))
 
 
 class RelatedNode(BaseNode):
@@ -262,23 +316,33 @@ class Query:
         # XXX Using DISTINCT is suboptimal. Revisit the decision in the future.
         return 'MATCH {} WHERE {} RETURN DISTINCT {}'.format(match, where, ret)
 
-    def __not__(self):
+    def __invert__(self):
+        """self.__invert__()  <==>  ~self"""
         return NotOperator(self)
 
     def __and__(self, other):
+        """self.__and__(other)  <==>  self & other"""
         return AndOperator((self, other))
 
     def __or__(self, other):
+        """self.__or__(other)  <==>  self | other"""
         return OrOperator((self, other))
 
     def __str__(self):
         return self.cypher()
 
-    def __repr__(self):
-        return '<{}: {}>'.format(self.__class__.__name__, self.cypher())
+
+class SingletonQuery(Query):
+
+    def __new__(cls):
+        try:
+            return cls._instance
+        except AttributeError:
+            cls._instance = super().__new__(cls)
+            return cls._instance
 
 
-class Nil(Query):
+class Nil(SingletonQuery):
 
     def match_nodes(self, subject_node):
         return [subject_node]
@@ -286,14 +350,20 @@ class Nil(Query):
     def where_clause(self, subject_node):
         return 'FALSE'
 
+    def __repr__(self):
+        return 'Nil()'
 
-class Any(Query):
+
+class Any(SingletonQuery):
 
     def match_nodes(self, subject_node):
         return [subject_node]
 
     def where_clause(self, subject_node):
         return 'TRUE'
+
+    def __repr__(self):
+        return 'Any()'
 
 
 class QueryOperator(Query):
@@ -315,6 +385,8 @@ class LogicalOperator(QueryOperator):
 class UnaryLogicalOperator(LogicalOperator):
 
     def __init__(self, query):
+        if not isinstance(query, Query):
+            raise TypeError(type(query).__name__)
         self.query = query
 
     def match_nodes(self, subject_node):
@@ -322,6 +394,14 @@ class UnaryLogicalOperator(LogicalOperator):
 
     def where_clause(self, subject_node):
         return '{} ({})'.format(self.cypher_keyword, self.query.where_clause(subject_node))
+
+    def __eq__(self, other):
+        if type(self) is not type(other):
+            return NotImplemented
+        return self.query == other.query
+
+    def __repr__(self):
+        return '{0.__class__.__name__}({0.query!r})'.format(self)
 
 
 @register_operator()
@@ -333,23 +413,71 @@ class NotOperator(UnaryLogicalOperator):
 
 class BinaryLogicalOperator(LogicalOperator):
 
-    def __init__(self, conditions):
-        self.conditions = list(self.prepare_conditions(conditions))
+    def __new__(cls, conditions):
+        conditions = cls.prepare_conditions(conditions)
 
+        if not conditions:
+            return cls.identity_element
+        elif len(conditions) == 1:
+            return conditions[0]
+
+        self = super().__new__(cls)
+        self.conditions = conditions
+
+        return self
+
+    @property
     @abc.abstractmethod
-    def prepare_conditions(self, conditions):
-        return conditions
+    def identity_element(cls):
+        raise NotImplementedError
+
+    @property
+    @abc.abstractmethod
+    def absorbing_element(cls):
+        raise NotImplementedError
+
+    @classmethod
+    def prepare_conditions(cls, conditions):
+        prepared_conditions = []
+
+        for cond in conditions:
+            if not isinstance(cond, Query):
+                raise TypeError(type(cond).__name__)
+
+            if cond == cls.identity_element:
+                pass
+            elif isinstance(cond, cls):
+                prepared_conditions.extend(cond.conditions)
+            else:
+                prepared_conditions.append(cond)
+
+        if cls.absorbing_element in prepared_conditions:
+            return (cls.absorbing_element,)
+        else:
+            return tuple(prepared_conditions)
 
     def match_nodes(self, subject_node):
-        match_nodes = set()
+        match_nodes = []
         for cond in self.conditions:
-            match_nodes.update(cond.match_nodes(subject_node))
+            for node in cond.match_nodes(subject_node):
+                if node not in match_nodes:
+                    match_nodes.append(node)
         return match_nodes
 
     def where_clause(self, subject_node):
         wrap = '({})'.format
         join = ' {} '.format(self.cypher_keyword).join
         return join(wrap(cond.where_clause(subject_node)) for cond in self.conditions)
+
+    def __eq__(self, other):
+        if type(self) is not type(other):
+            return NotImplemented
+        return self.conditions == other.conditions
+
+    def __repr__(self):
+        return '{}({})'.format(
+            self.__class__.__name__,
+            ', '.join(repr(cond) for cond in self.conditions))
 
 
 @register_operator(top_level=True)
@@ -358,14 +486,8 @@ class AndOperator(BinaryLogicalOperator):
     keyword = '$and'
     cypher_keyword = 'AND'
 
-    def prepare_conditions(self, conditions):
-        for cond in conditions:
-            if isinstance(cond, Any):
-                pass
-            elif isinstance(cond, AndOperator):
-                yield from cond.conditions
-            else:
-                yield cond
+    identity_element = Any()
+    absorbing_element = Nil()
 
 
 @register_operator(top_level=True)
@@ -374,20 +496,14 @@ class OrOperator(BinaryLogicalOperator):
     keyword = '$or'
     cypher_keyword = 'OR'
 
-    def prepare_conditions(self, conditions):
-        for cond in conditions:
-            if isinstance(cond, Nil):
-                pass
-            elif isinstance(cond, OrOperator):
-                yield from cond.conditions
-            else:
-                yield cond
+    identity_element = Nil()
+    absorbing_element = Any()
 
 
 class RelatedQuery(Query):
 
-    def __init__(self, query):
-        self.node = Node()
+    def __init__(self, label, query):
+        self.node = Node(label)
         self.query = query
 
     def match_nodes(self, subject_node):
@@ -397,6 +513,14 @@ class RelatedQuery(Query):
 
     def where_clause(self, subject_node):
         return self.query.where_clause(self.node)
+
+    def __eq__(self, other):
+        if type(self) is not type(other):
+            return NotImplemented
+        return self.node == other.node and self.query == other.query
+
+    def __repr__(self):
+        return '{0.__class__.__name__}({0.query!r})'.format(self)
 
 
 class PropertyCondition(QueryOperator):
@@ -413,6 +537,14 @@ class PropertyCondition(QueryOperator):
     def match_nodes(self, subject_node):
         return [subject_node]
 
+    def __eq__(self, other):
+        if type(self) is not type(other):
+            return NotImplemented
+        return self.key == other.key and self.value == other.value
+
+    def __repr__(self):
+        return '{0.__class__.__name__}({0.key!r}, {0.value!r})'.format(self)
+
 
 @register_operator()
 class PropertyEquals(PropertyCondition):
@@ -422,7 +554,7 @@ class PropertyEquals(PropertyCondition):
     value_type = ELEMENTARY_TYPE
 
     def where_clause(self, subject_node):
-        return '{}.{} = {!r}'.format(subject_node.name, self.key, self.value)
+        return '{}.{} = {}'.format(escape_name(subject_node.name), escape_name(self.key), escape_value(self.value))
 
 
 @register_operator()
@@ -433,7 +565,7 @@ class PropertyNotEquals(PropertyCondition):
     value_type = ELEMENTARY_TYPE
 
     def where_clause(self, subject_node):
-        return '{}.{} <> {!r}'.format(subject_node.name, self.key, self.value)
+        return '{}.{} <> {}'.format(escape_name(subject_node.name), escape_name(self.key), escape_value(self.value))
 
 
 @register_operator()
@@ -444,7 +576,7 @@ class PropertyIn(PropertyCondition):
     value_type = ListOf(ELEMENTARY_TYPE)
 
     def where_clause(self, subject_node):
-        return '{}.{} IN {!r}'.format(subject_node.name, self.key, self.value)
+        return '{}.{} IN {}'.format(escape_name(subject_node.name), escape_name(self.key), escape_value(self.value))
 
 
 @register_operator()
@@ -455,7 +587,7 @@ class PropertyNotIn(PropertyCondition):
     value_type = ListOf(ELEMENTARY_TYPE)
 
     def where_clause(self, subject_node):
-        return 'NOT {}.{} IN {!r}'.format(subject_node.name, self.key, self.value)
+        return 'NOT {}.{} IN {}'.format(escape_name(subject_node.name), escape_name(self.key), escape_value(self.value))
 
 
 @register_operator()
@@ -466,7 +598,7 @@ class PropertyRegex(PropertyCondition):
     value_type = STRING
 
     def where_clause(self, subject_node):
-        return '{}.{} =~ {!r}'.format(subject_node.name, self.key, self.value)
+        return '{}.{} =~ {}'.format(escape_name(subject_node.name), escape_name(self.key), escape_value(self.value))
 
 
 @register_operator()
@@ -477,7 +609,7 @@ class PropertyStartsWith(PropertyCondition):
     value_type = STRING
 
     def where_clause(self, subject_node):
-        return '{}.{} STARTS WITH {!r}'.format(subject_node.name, self.key, self.value)
+        return '{}.{} STARTS WITH {}'.format(escape_name(subject_node.name), escape_name(self.key), escape_value(self.value))
 
 
 @register_operator()
@@ -488,7 +620,7 @@ class PropertyEndsWith(PropertyCondition):
     value_type = STRING
 
     def where_clause(self, subject_node):
-        return '{}.{} ENDS WITH {!r}'.format(subject_node.name, self.key, self.value)
+        return '{}.{} ENDS WITH {}'.format(escape_name(subject_node.name), escape_name(self.key), escape_value(self.value))
 
 
 @register_operator()
@@ -499,7 +631,7 @@ class PropertyContains(PropertyCondition):
     value_type = ELEMENTARY_TYPE
 
     def where_clause(self, subject_node):
-        return '{}.{} CONTAINS {!r}'.format(subject_node.name, self.key, self.value)
+        return '{}.{} CONTAINS {}'.format(escape_name(subject_node.name), escape_name(self.key), escape_value(self.value))
 
 
 @register_operator()
@@ -507,10 +639,10 @@ class PropertyGt(PropertyCondition):
 
     keyword = '$gt'
 
-    value_type = NUMBER
+    value_type = INT
 
     def where_clause(self, subject_node):
-        return '{}.{} > {}'.format(subject_node.name, self.key, self.value)
+        return '{}.{} > {}'.format(escape_name(subject_node.name), escape_name(self.key), self.value)
 
 
 @register_operator()
@@ -518,10 +650,10 @@ class PropertyGte(PropertyCondition):
 
     keyword = '$gte'
 
-    value_type = NUMBER
+    value_type = INT
 
     def where_clause(self, subject_node):
-        return '{}.{} >= {}'.format(subject_node.name, self.key, self.value)
+        return '{}.{} >= {}'.format(escape_name(subject_node.name), escape_name(self.key), self.value)
 
 
 @register_operator()
@@ -529,10 +661,10 @@ class PropertyLt(PropertyCondition):
 
     keyword = '$lt'
 
-    value_type = NUMBER
+    value_type = INT
 
     def where_clause(self, subject_node):
-        return '{}.{} < {}'.format(subject_node.name, self.key, self.value)
+        return '{}.{} < {}'.format(escape_name(subject_node.name), escape_name(self.key), self.value)
 
 
 @register_operator()
@@ -540,10 +672,10 @@ class PropertyLte(PropertyCondition):
 
     keyword = '$lte'
 
-    value_type = NUMBER
+    value_type = INT
 
     def where_clause(self, subject_node):
-        return '{}.{} <= {}'.format(subject_node.name, self.key, self.value)
+        return '{}.{} <= {}'.format(escape_name(subject_node.name), escape_name(self.key), self.value)
 
 
 class ObjectIdCondition(QueryOperator):
@@ -559,6 +691,14 @@ class ObjectIdCondition(QueryOperator):
     def match_nodes(self, subject_node):
         return [subject_node]
 
+    def __eq__(self, other):
+        if type(self) is not type(other):
+            return NotImplemented
+        return self.value == other.value
+
+    def __repr__(self):
+        return '{0.__class__.__name__}({0.value!r})'.format(self)
+
 
 class ObjectIdEquals(ObjectIdCondition):
 
@@ -566,18 +706,8 @@ class ObjectIdEquals(ObjectIdCondition):
 
     def where_clause(self, subject_node):
         cloud_id = '([^/]*/)*' + re.escape(self.value)
-        return '{node}.cloud_id =~ {cloud_id!r} OR {node}.name = {value!r}'.format(
-            node=subject_node.name, cloud_id=cloud_id, value=self.value)
-
-
-class ObjectIdNotEquals(ObjectIdCondition):
-
-    value_type = STRING
-
-    def where_clause(self, subject_node):
-        cloud_id = '([^/]*/)*' + re.escape(self.value)
-        return '{node}.cloud_id <> {cloud_id!r} AND {node}.name <> {value!r}'.format(
-            node=subject_node.name, cloud_id=cloud_id, value=self.value)
+        return '{node}.cloud_id =~ {cloud_id} OR {node}.name = {value}'.format(
+            node=escape_name(subject_node.name), cloud_id=escape_value(cloud_id), value=escape_value(self.value))
 
 
 class ObjectIdIn(ObjectIdCondition):
@@ -586,15 +716,5 @@ class ObjectIdIn(ObjectIdCondition):
 
     def where_clause(self, subject_node):
         cloud_id = '([^/]*/)*(' + '|'.join(re.escape(item) for item in self.value) + ')'
-        return '{node}.cloud_id =~ {cloud_id!r} OR {node}.name IN {value!r}'.format(
-            node=subject_node.name, cloud_id=cloud_id, value=self.value)
-
-
-class ObjectIdNotIn(ObjectIdCondition):
-
-    value_type = ListOf(STRING)
-
-    def where_clause(self, subject_node):
-        cloud_id = '([^/]*/)*(' + '|'.join(re.escape(item) for item in self.value) + ')'
-        return 'NOT {node}.cloud_id =~ {cloud_id!r} AND NOT {node}.name IN {value!r}'.format(
-            node=subject_node.name, cloud_id=cloud_id, value=self.value)
+        return '{node}.cloud_id =~ {cloud_id} OR {node}.name IN {value}'.format(
+            node=escape_name(subject_node.name), cloud_id=escape_value(cloud_id), value=escape_value(self.value))
