@@ -86,38 +86,3 @@ class PeriodicJob(threading.Thread):
 def cleanup_stale_triggers():
     from teacup.apiserver.models import Trigger
     Trigger.objects.stale().update(status='pending')
-
-
-@run_every(seconds=10)
-def cleanup_members():
-    from teacup.apiserver import graph
-    from teacup.apiserver.models import Group
-
-    for group in Group.objects.all():
-        if not group.include and not group.exclude:
-            continue
-
-        if group.query:
-            matching_members = {
-                member['cloud_id']
-                for member in graph.run_query(graph.parse_query(group.query))
-            }
-        else:
-            matching_members = set()
-
-        include = set(group.include)
-        exclude = set(group.exclude)
-
-        updated_include = graph.normalize_ids(include)
-        updated_exclude = graph.normalize_ids(exclude)
-
-        updated_include.difference_update(updated_exclude)
-        updated_include.difference_update(matching_members)
-
-        updated_exclude.intersection_update(matching_members)
-
-        if updated_include != include or updated_exclude != exclude:
-            group.include = list(updated_include)
-            group.exclude = list(updated_exclude)
-
-            group.save()
