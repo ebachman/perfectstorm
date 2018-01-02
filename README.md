@@ -7,17 +7,17 @@ Prototype for application specification, visualization and discovery.
 
 Follow these steps to bring up the Perfect Storm API Server (a.k.a _Teacup_) and interact with it.
 
-The API server uses [Topology](https://github.com/MosaixSoft/MosaixTopology) and [Neo4j](https://neo4j.com/) as its
-primary data source. Be sure to have them up and running before starting.
+The API server uses [MongoDB](https://www.mongodb.com/) as its storage backend. Be sure to have it
+up and running before starting.
 
 1. First of all, create a Python virtual environment:
 
        $ python3 -m venv env
        $ . env/bin/activate
 
-1. Be sure to have the latest version of `pip`, a tool for installing Python packages:
+1. Make sure to have the latest version of `pip` and `wheel`:
 
-       $ pip install --upgrade pip
+       $ pip install --upgrade pip wheel
 
 1. Install the requirements for this project:
 
@@ -25,30 +25,26 @@ primary data source. Be sure to have them up and running before starting.
 
    This will also install all the subprojects in "development mode".
 
-1. Initialize the local database:
+1. (Optional) If MongoDB is running on another host, or if you want to customize the connection, you can
+   specify some additional environment variables:
 
-       $ ./core/manage.py migrate
-       Operations to perform:
-         Apply all migrations: admin, auth, contenttypes, sessions
-       Running migrations:
-       ...
+   - `DJANGO_MONGO_HOST`: host to connect to, defaults to `127.0.0.1`;
+   - `DJANGO_MONGO_PORT`: port to connecto to, defaults to `27017`
+   - `DJANGO_MONGO_DB`: name of the database, defaults to `perfectstorm`.
 
-1. (Optional) If Noe4j is running on another host, or without the default username and password combination,
-   you will need to specify some additional environment variables: `DJANGO_NEO4J_URL`, `DJANGO_NEO4J_USERNAME`
-   and `DJANGO_NEO4J_PASSWORD`.
+   You can add these environment variables at the bottom of your `env/bin/activate` so that they are loaded
+   automatically every time you start using the Python virtual environment:
 
-   You can add them at the bottom of your `env/bin/activate` so that they are loaded automatically every time
-   you start using the Python virtual environment:
-
-       $ echo 'DJANGO_NEO4J_URL=bolt://10.20.30.40/' >> env/bin/activate
-       $ echo 'DJANGO_NEO4J_USERNAME=user' >> env/bin/activate
-       $ echo 'DJANGO_NEO4J_PASSWORD=secret' >> env/bin/activate
+       $ echo 'DJANGO_MONGO_HOST=127.0.0.1' >> env/bin/activate
+       $ echo 'DJANGO_MONGO_PORT=27017' >> env/bin/activate
+       $ echo 'DJANGO_MONGO_DB=perfectstorm' >> env/bin/activate
 
 Now you're ready to start the API Server!
 
-    $ stormd
+    $ stormd --bootstrap
+    Bootstrap completed
     Listening on http://127.0.0.1:8000/
-    [I 171218 04:15:56 process:133] Starting 8 processes
+    [2018-01-02 18:16:43] Starting 8 processes
 
 You can now interact with the API at http://127.0.0.1:8000/v1/ and read the documentation
 at http://127.0.0.1:8000/docs/.
