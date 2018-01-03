@@ -1,184 +1,164 @@
 #!/usr/bin/env python3
+# Copyright (c) 2018, Andrea Corbellini
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+#
+# 1. Redistributions of source code must retain the above copyright notice, this
+#    list of conditions and the following disclaimer.
+#
+# 2. Redistributions in binary form must reproduce the above copyright notice,
+#    this list of conditions and the following disclaimer in the documentation
+#    and/or other materials provided with the distribution.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+#
+# The views and conclusions contained in the software and documentation are those
+# of the authors and should not be interpreted as representing official policies,
+# either expressed or implied, of the Perfect Storm Project.
 
-import argparse
-import contextlib
-import functools
-import os.path
-import random
-import re
-import shlex
-import subprocess
+import collections
 
-import yaml
+import requests_unixsocket
 
-from perfectstorm.clients.triggers import TriggerExecutor, RecipeTriggerHandler
-
-
-@contextlib.contextmanager
-def substitute_env(env):
-    orig_env, os.environ = os.environ, env
-
-    try:
-        yield
-    finally:
-        os.environ = orig_env
-
-
-def expandvars(lst, env):
-    with substitute_env(env):
-        return [os.path.expandvars(s) for s in lst]
-
-
-def expand_commands(commands, params):
-    expanded_commands = []
-
-    for args in commands:
-        if isinstance(args, str):
-            args = shlex.split(args)
-        args = expandvars(args, params)
-        expanded_commands.append(args)
-
-    return expanded_commands
+from perfectstorm.clients.discovery import DiscoveryExecutor
 
 
-def find_required_ports(commands):
-    required_ports = set()
-
-    parser = argparse.ArgumentParser(add_help=False)
-    parser.add_argument('-p', '--publish', action='append', default=[])
-
-    for args in commands:
-        try:
-            opts, ignored_opts = parser.parse_known_args(args)
-        except SystemExit:
-            continue
-
-        for port_spec in opts.publish:
-            # XXX Very simple match, does not take into account all cases.
-            host_port, container_port = port_spec.split(':')
-            required_ports.add(host_port)
-
-    return required_ports
+DockerSnapshot = collections.namedtuple('DockerSnapshot', 'info containers')
 
 
-def find_node_with_free_ports(nodes_pool, required_ports):
-    if required_ports:
-        conditions = []
+class DockerDiscoveryDaemon(DiscoveryExecutor):
 
-        for port in required_ports:
-            options_regex = r'.*"ports"\s*:\s*\[[^]]*"%s:.*' % re.escape(port)
+    _url_prefix = 'http+unix://%2Fvar%2Frun%2Fdocker.sock/'
 
-            conditions.append({
-                'engine': {
-                    'status': 'UP',
-                    'options': {
-                        '$regex': options_regex,
-                    },
-                },
-            })
+    def __init__(self, *args, **kwargs):
+        self._session = requests_unixsocket.Session()
+        super().__init__(*args, **kwargs)
 
-        busy_nodes = nodes_pool.members({
-            '$and': [
-                {'status': 'UP'},
-                {'$or': conditions},
-            ],
-        })
+    def _get_json(self, path):
+        url = '/'.join((self._url_prefix.rstrip('/'), path.lstrip('/')))
+        response = self._session.get(url)
+        response.raise_for_status()
+        return response.json()
 
-        busy_nodes_ids = [node['cloud_id'] for node in busy_nodes]
-    else:
-        busy_nodes_ids = []
+    @property
+    def docker_host_id(self):
+        return self.snapshot.info['ID']
 
-    candidate_nodes = nodes_pool.members({
-        'status': 'UP',
-        '_id': {
-            '$nin': busy_nodes_ids,
-        },
-    })
+    def take_current_snapshot(self):
+        info = self._get_json('/info')
+        del info['SystemTime']
 
-    return random.choice(candidate_nodes)
+        containers = self._get_json('/containers/json?all=1')
+        containers = {data['Id']: data for data in containers}
 
+        return DockerSnapshot(info, containers)
 
-def run_docker(node_ip, args):
-    docker_command = ['docker', '-H', node_ip] + args
+    def take_stored_snapshot(self):
+        info = None
+        containers = {}
 
-    process = subprocess.run(docker_command, input=b'', check=True, stdout=subprocess.PIPE)
+        for resource in self.api.resources.all():
+            if self.docker_host_id in resource['names']:
+                info = resource['snapshot']
+            elif resource['host'] == self.docker_host_id:
+                containers[resource['names'][0]] = resource['snapshot']
 
-    return process.stdout.decode().strip().split('\n')
+        return DockerSnapshot(info, containers)
 
+    def compare_snapshots(self, prev, curr):
+        created = []
+        updated = []
+        deleted = []
 
-class DockerRecipeHandler(RecipeTriggerHandler):
-
-    def retrieve_recipe(self):
-        super().retrieve_recipe()
-
-        recipe_content = yaml.safe_load(self.recipe['content'])
-
-        if 'run' in recipe_content and 'exec' in recipe_content:
-            raise ValueError("Cannot specify both 'run' and 'exec' at the same time")
-
-        if 'run' in recipe_content:
-            self.action = 'docker_run'
-            commands = recipe_content['run']
-        elif 'exec' in recipe_content:
-            self.action = 'docker_exec'
-            commands = recipe_content['exec']
-        elif 'rm' in recipe_content:
-            self.action = 'docker_rm'
-            commands = [recipe_content['rm']]
+        if prev is None:
+            # First run
+            created.append(('info', curr.info))
+            created.extend(('container', container) for container in curr.containers.values())
         else:
-            raise ValueError("One of 'run', 'exec' or 'rm' must be specified")
+            # Compare info
+            if prev.info != curr.info:
+                updated.append(('info', curr.info))
 
-        self.commands = expand_commands(commands, self.recipe_params)
+            # Compare containers
+            prev_containers = set(prev.containers)
+            curr_containers = set(curr.containers)
 
-    def filter_nodes(self, group):
-        if self.action == 'docker_rm':
-            return group.members()
+            created_containers = curr_containers.difference(prev_containers)
+            deleted_containers = prev_containers.difference(curr_containers)
+            common_containers = prev_containers & curr_containers
+
+            created.extend(('container', curr.containers[container_id]) for container_id in created_containers)
+            deleted.extend(('container', prev.containers[container_id]) for container_id in deleted_containers)
+
+            for container_id in common_containers:
+                prev_container = prev.containers[container_id]
+                curr_container = curr.containers[container_id]
+
+                if prev_container != curr_container:
+                    updated.append(('container', curr_container))
+
+        # Return differences
+        return created, updated, deleted
+
+    def create_resource(self, resource):
+        self.save_resource(resource)
+
+    def update_resource(self, resource):
+        self.save_resource(resource)
+
+    def save_resource(self, resource):
+        resource_type, data = resource
+
+        if resource_type == 'info':
+            self.save_docker_info(data)
+        elif resource_type == 'container':
+            self.save_container(data)
         else:
-            return group.members(status='UP')
+            raise AssertionError(resource_type)
 
-    def choose_node(self, group):
-        if self.action != 'docker_run':
-            raise ValueError("'targetAnyOf' is not supported when using 'exec' or 'rm'")
+    def save_docker_info(self, data):
+        names = [data['ID'], data['Name']]
 
-        required_ports = find_required_ports(self.commands)
-        return find_node_with_free_ports(group, required_ports)
+        self.api.resources.update_or_create(
+            names[0],
+            {
+                'type': 'host',
+                'names': names,
+                'snapshot': data,
+            },
+        )
 
-    def run_recipe(self, node):
-        getattr(self, self.action)(node)
+    def save_container(self, data):
+        names = [data['Id']]
+        names.extend(name.lstrip('/') for name in data['Names'])
 
-    def docker_run(self, node):
-        node_ip = self.api.shortcuts.get_address_for(node)
+        self.api.resources.update_or_create(
+            names[0],
+            {
+                'type': 'container',
+                'names': names,
+                'image': data['Image'],
+                'host': self.snapshot.info['ID'],
+                'snapshot': data,
+            },
+        )
 
-        prepend_args = ['run', '-d']
-
-        if self.recipe_options.get('consulDns', True):
-            prepend_args += ['--dns', '172.17.0.1']
-
-        for args in self.commands:
-            new_resources = run_docker(node_ip, prepend_args + args)
-
-            for resource_id in new_resources:
-                self.create_resource(resource_id)
-
-    def docker_exec(self, node):
-        docker_host = self.api.shortcuts.get_node_for(node)
-        docker_host_ip = self.api.shortcuts.get_address_for(docker_host)
-
-        prepend_args = ['exec', node['name']]
-
-        for args in self.commands:
-            run_docker(docker_host_ip, prepend_args + args)
-            self.update_resource(node['cloud_id'])
-
-    def docker_rm(self, node):
-        docker_host = self.api.shortcuts.get_node_for(node)
-        docker_host_ip = self.api.shortcuts.get_address_for(docker_host)
-
-        args = ['rm', node['name']] + self.commands[0]
-        run_docker(docker_host_ip, args)
-
-        self.delete_resource(node['cloud_id'])
+    def delete_resource(self, resource):
+        resource_type, data = resource
+        assert resource_type == 'container'
+        self.api.resources.get(data['Id']).delete()
 
 
 if __name__ == '__main__':
-    TriggerExecutor(trigger_handler=DockerRecipeHandler).main()
+    DockerDiscoveryDaemon().main()

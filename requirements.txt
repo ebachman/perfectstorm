@@ -8,4 +8,5 @@ setuptools >= 20
 
 -e ./executors/consul
 -e ./executors/docker
+-e ./executors/docker-deployer
 -e ./executors/loadbalancer

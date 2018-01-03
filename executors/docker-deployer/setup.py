@@ -1,3 +1,4 @@
+# Copyright (c) 2017, Composure.ai
 # Copyright (c) 2018, Andrea Corbellini
 # All rights reserved.
 #
@@ -26,15 +27,14 @@
 # of the authors and should not be interpreted as representing official policies,
 # either expressed or implied, of the Perfect Storm Project.
 
-from setuptools import setup
+from setuptools import setup, find_packages
 
 setup(
-    name='perfectstorm-executors-docker',
+    name='perfectstorm-executors-docker-deployer',
     version='0.1',
-    scripts=['storm-docker'],
+    scripts=['storm-docker-deployer'],
     install_requires=[
         'perfectstorm-lib',
-        'requests-unixsocket >= 0.1, < 0.2',
     ],
     dependency_links=[
         '../../library',
