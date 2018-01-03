@@ -1,9 +1,38 @@
+# Copyright (c) 2017, Composure.ai
+# Copyright (c) 2018, Andrea Corbellini
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+#
+# 1. Redistributions of source code must retain the above copyright notice, this
+#    list of conditions and the following disclaimer.
+#
+# 2. Redistributions in binary form must reproduce the above copyright notice,
+#    this list of conditions and the following disclaimer in the documentation
+#    and/or other materials provided with the distribution.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+#
+# The views and conclusions contained in the software and documentation are those
+# of the authors and should not be interpreted as representing official policies,
+# either expressed or implied, of the Perfect Storm Project.
+
 import threading
 import time
 import traceback
 
 from .. import exceptions
-from .base import Resource, Collection, json_compact
+from . import base
 
 
 def json_exception(exc_value):
@@ -17,7 +46,18 @@ def json_exception(exc_value):
     }
 
 
-class Group(Resource):
+class Resource(base.Resource):
+
+    class Meta:
+        path = 'v1/resources/'
+        lookup_field = None
+
+    @property
+    def identifier(self):
+        return self['names'][0]
+
+
+class Group(base.Resource):
 
     class Meta:
         path = 'v1/groups/'
@@ -25,7 +65,7 @@ class Group(Resource):
 
     def members(self, *args, **kwargs):
         query = dict(*args, **kwargs)
-        params = {'q': json_compact(query)}
+        params = {'q': base.json_compact(query)}
         return self._get('members', params=params)
 
     def add_members(self, members):
@@ -41,14 +81,14 @@ class Group(Resource):
         self._post('members', json={'include': list(wanted_members), 'exclude': list(unwanted_members)})
 
 
-class Application(Resource):
+class Application(base.Resource):
 
     class Meta:
         path = 'v1/apps/'
         lookup_field = 'name'
 
 
-class Recipe(Resource):
+class Recipe(base.Resource):
 
     class Meta:
         path = 'v1/recipes/'
@@ -107,7 +147,7 @@ class TriggerHandler:
             self.trigger.fail(exc_value)
 
 
-class TriggerCollection(Collection):
+class TriggerCollection(base.Collection):
 
     def run(*args, **kwargs):
         if len(args) < 1:
@@ -121,7 +161,7 @@ class TriggerCollection(Collection):
         return trigger
 
 
-class Trigger(Resource):
+class Trigger(base.Resource):
 
     heartbeat_interval = 30
 
