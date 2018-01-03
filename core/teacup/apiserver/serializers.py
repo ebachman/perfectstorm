@@ -29,6 +29,7 @@
 
 from rest_framework.serializers import (
     CharField,
+    Field,
     JSONField,
     ListField,
     ModelSerializer,
@@ -57,11 +58,22 @@ from teacup.apiserver.models import (
 from teacup.apiserver import validators
 
 
+class EscapedDynamicField(Field):
+
+    def to_representation(self, value):
+        return value
+
+    def to_internal_value(self, value):
+        return value
+
+
 class ResourceSerializer(DynamicDocumentSerializer):
+
+    snapshot = EscapedDynamicField()
 
     class Meta:
         model = Resource
-        fields = ('type', 'names')
+        fields = ('type', 'names', 'host', 'image', 'snapshot')
 
     def to_internal_value(self, data):
         try:
@@ -73,6 +85,8 @@ class ResourceSerializer(DynamicDocumentSerializer):
 
 
 class GroupSerializer(DocumentSerializer):
+
+    query = EscapedDynamicField()
 
     class Meta:
         model = Group

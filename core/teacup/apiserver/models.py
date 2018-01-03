@@ -27,6 +27,8 @@
 # of the authors and should not be interpreted as representing official policies,
 # either expressed or implied, of the Perfect Storm Project.
 
+import functools
+import re
 import uuid
 from datetime import datetime, timedelta
 
@@ -36,8 +38,6 @@ from jsonfield import JSONField
 
 from mongoengine import (
     Document,
-    DynamicDocument,
-    DynamicField,
     EmbeddedDocument,
     EmbeddedDocumentField,
     EmbeddedDocumentListField,
@@ -48,11 +48,93 @@ from mongoengine import (
     ValidationError,
 )
 
+from mongoengine.fields import BaseField
 
-class Resource(DynamicDocument):
+
+def _escape_char(matchobj, chr=chr, ord=ord):
+    # 0x2f is the character after '.'. All characters after '.' are allowed.
+    return '\x1b' + chr(0x2f + ord(matchobj.group(0)))
+
+
+def _unescape_char(matchobj, chr=chr, ord=ord):
+    return chr(ord(matchobj.group(1)) - 0x2f)
+
+
+_escape_key = functools.partial(
+    re.compile(r'[\0\x1b$.]').sub, _escape_char)
+
+_unescape_key = functools.partial(
+    re.compile(r'\x1b(.)').sub, _unescape_char)
+
+
+def _replace_keys(obj, replace_key_func):
+    if isinstance(obj, dict):
+        new_dict = {}
+
+        for key, value in obj.items():
+            key = replace_key_func(key)
+            value = _replace_keys(value, replace_key_func)
+            new_dict[key] = value
+
+        return new_dict
+    elif isinstance(obj, list):
+        return [_replace_keys(item, replace_key_func) for item in obj]
+    elif isinstance(obj, tuple):
+        return tuple(_replace_keys(item, replace_key_func) for item in obj)
+    else:
+        # Assume this is a primitive type, or an unsupported type (in which
+        # case BSON will take care of raising an exception).
+        return obj
+
+
+def escape_keys(obj):
+    r"""
+    Replace '\0', '$' and '.' in dictionary keys with other character sequences
+    that are accepted by BSON.
+    """
+    return _replace_keys(obj, _escape_key)
+
+
+def unescape_keys(obj):
+    """
+    Restore dictionary keys that were escaped by escape_keys().
+    """
+    return _replace_keys(obj, _unescape_key)
+
+
+class EscapedDynamicField(BaseField):
+    r"""
+    A DynamicField-like field that allows any kind of keys in dictionaries.
+
+    Specifically, it allows any key starting with '_', it does not treat
+    any keys in a special way (such as '_cls') and transparently escapes
+    forbidden BSON characters ('\0', '$' and '.') before saving.
+    """
+
+    def to_mongo(self, value, *args, **kwargs):
+        return escape_keys(value)
+
+    def to_python(self, value):
+        return unescape_keys(value)
+
+    def lookup_member(self, member_name):
+        return member_name
+
+    def prepare_query_value(self, op, value):
+        if isinstance(value, str):
+            return StringField().prepare_query_value(op, value)
+        return super().prepare_query_value(op, self.to_mongo(value))
+
+
+class Resource(Document):
 
     type = StringField(min_length=1, required=True)
     names = ListField(StringField(min_length=1), min_length=1, required=True)
+
+    host = StringField(min_length=1, null=True)
+    image = StringField(min_length=1, null=True)
+
+    snapshot = EscapedDynamicField()
 
     meta = {
         'indexes': [
@@ -89,7 +171,7 @@ class Group(Document):
     name = StringField(min_length=1, required=True, unique=True)
     services = EmbeddedDocumentListField(Service)
 
-    query = DynamicField()
+    query = EscapedDynamicField()
     include = ListField(ReferenceField(Resource))
     exclude = ListField(ReferenceField(Resource))
 
