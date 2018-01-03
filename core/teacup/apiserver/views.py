@@ -62,6 +62,8 @@ class ResourceViewSet(ModelViewSet):
     queryset = Resource.objects.all()
     serializer_class = ResourceSerializer
 
+    lookup_field = 'names'
+
 
 class GroupViewSet(ModelViewSet):
 

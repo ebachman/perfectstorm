@@ -52,7 +52,7 @@ from mongoengine import (
 class Resource(DynamicDocument):
 
     type = StringField(min_length=1, required=True)
-    names = ListField(StringField(min_length=1))
+    names = ListField(StringField(min_length=1), min_length=1, required=True)
 
     meta = {
         'indexes': [

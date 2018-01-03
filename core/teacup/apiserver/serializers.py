@@ -61,7 +61,7 @@ class ResourceSerializer(DynamicDocumentSerializer):
 
     class Meta:
         model = Resource
-        fields = ('pk', 'type', 'names')
+        fields = ('type', 'names')
 
     def to_internal_value(self, data):
         try:
