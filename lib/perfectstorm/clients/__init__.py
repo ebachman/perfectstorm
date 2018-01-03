@@ -3,7 +3,7 @@ import argparse
 import time
 import traceback
 
-from .. import api
+from .. import DEFAULT_HOST, DEFAULT_PORT, connect
 
 
 class BaseClient(metaclass=abc.ABCMeta):
@@ -13,16 +13,19 @@ class BaseClient(metaclass=abc.ABCMeta):
         self.add_arguments()
 
     def add_arguments(self):
+        default_addr = '%s:%d' % (DEFAULT_HOST, DEFAULT_PORT)
         self.parser.add_argument(
-            '-S', '--apiserver', metavar='HOST[:PORT]', default=api.DEFAULT_APISERVER,
-            help='Address to the Perfect Storm API server (default: {})'.format(api.DEFAULT_APISERVER))
+            '-S', '--apiserver', metavar='HOST[:PORT]', default=default_addr,
+            help='Address to the Perfect Storm API server (default: {})'.format(default_addr))
 
     def parse_arguments(self, args=None):
         self.create_parser()
         self.options = self.parser.parse_args(args)
 
     def setup_api(self):
-        self.api = api.PerfectStormApi(self.options.apiserver)
+        host, port = self.options.apiserver.rsplit(':', 1)
+        port = int(port)
+        connect(host, port)
 
     def setup(self, args=None):
         self.parse_arguments(args)

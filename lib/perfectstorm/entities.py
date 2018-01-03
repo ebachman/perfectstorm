@@ -30,9 +30,10 @@
 import threading
 import time
 import traceback
+from urllib.parse import urljoin
 
-from .. import exceptions
-from . import base
+from . import exceptions
+from .base import Model, Collection
 
 
 def json_exception(exc_value):
@@ -46,53 +47,55 @@ def json_exception(exc_value):
     }
 
 
-class Resource(base.Resource):
+class Resource(Model):
 
     class Meta:
-        path = 'v1/resources/'
-        lookup_field = None
+        path = '/v1/resources/'
+        id_field = 'names'
+
+
+class GroupMembersCollection(Collection):
+
+    def __init__(self, group, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.group = group
 
     @property
-    def identifier(self):
-        return self['names'][0]
+    def url(self):
+        return urljoin(self.group.url, 'members/')
+
+    def add(self, members):
+        member_ids = [member.id for member in members]
+        self.session.post(json={'include': member_ids})
+
+    def remove(self, members):
+        member_ids = [member.id for member in members]
+        self.session.post(json={'exclude': member_ids})
 
 
-class Group(base.Resource):
+class Group(Model):
 
     class Meta:
-        path = 'v1/groups/'
-        lookup_field = 'name'
+        path = '/v1/groups/'
+        id_field = 'name'
 
     def members(self, *args, **kwargs):
         query = dict(*args, **kwargs)
-        params = {'q': base.json_compact(query)}
-        return self._get('members', params=params)
-
-    def add_members(self, members):
-        self._post('members', json={'include': list(members)})
-
-    def remove_members(self, members):
-        self._post('members', json={'exclude': list(members)})
-
-    def set_members(self, members):
-        wanted_members = list(members)
-        current_members = [member['cloud_id'] for member in self.members()]
-        unwanted_members = [member for member in current_members if member not in wanted_members]
-        self._post('members', json={'include': list(wanted_members), 'exclude': list(unwanted_members)})
+        return GroupMembersCollection(group=self, model=Resource, query=query, session=self.session)
 
 
-class Application(base.Resource):
+class Application(Model):
 
     class Meta:
-        path = 'v1/apps/'
-        lookup_field = 'name'
+        path = '/v1/apps/'
+        id_field = 'name'
 
 
-class Recipe(base.Resource):
+class Recipe(Model):
 
     class Meta:
-        path = 'v1/recipes/'
-        lookup_field = 'name'
+        path = '/v1/recipes/'
+        id_field = 'name'
 
 
 class TriggerHeartbeatThread(threading.Thread):
@@ -104,7 +107,7 @@ class TriggerHeartbeatThread(threading.Thread):
 
     def run(self):
         trigger = self.trigger
-        interval = trigger.heartbeat_interval
+        interval = trigger.Meta.heartbeat_interval
         event = self._cancel_event
 
         while not event.wait(interval):
@@ -147,29 +150,12 @@ class TriggerHandler:
             self.trigger.fail(exc_value)
 
 
-class TriggerCollection(base.Collection):
-
-    def run(*args, **kwargs):
-        if len(args) < 1:
-            raise TypeError("run() missing 2 required positional-only arguments: 'self' and 'name'")
-        if len(args) < 2:
-            raise TypeError("run() missing 1 required positional-only argument: 'name'")
-        self, name = args
-
-        trigger = self.create(name=name, arguments=kwargs)
-        trigger.wait()
-        return trigger
-
-
-class Trigger(base.Resource):
-
-    heartbeat_interval = 30
-
-    collection_class = TriggerCollection
+class Trigger(Model):
 
     class Meta:
         path = 'v1/triggers/'
-        lookup_field = 'uuid'
+        id_field = 'uuid'
+        heartbeat_interval = 30
 
     def is_pending(self):
         return self['status'] == 'pending'
