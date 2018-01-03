@@ -28,12 +28,16 @@
 # either expressed or implied, of the Perfect Storm Project.
 
 import datetime
+import json
+
+from pymongo.errors import OperationFailure
 
 from django.db import transaction
 from django.db.utils import OperationalError
 
 from rest_framework import status
 from rest_framework.decorators import detail_route
+from rest_framework.exceptions import APIException
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet as SqlModelViewSet
 
@@ -57,7 +61,57 @@ from teacup.apiserver.serializers import (
 )
 
 
-class ResourceViewSet(ModelViewSet):
+def query_filter(request, queryset):
+    """Apply the filter specified with the 'q' parameter, if any."""
+    query_string = request.GET.get('q')
+
+    if query_string:
+        try:
+            query = json.loads(query_string)
+        except json.JSONDecodeError as exc:
+            detail = {'q': [exc.args[0]]}
+            raise MalformedQueryError(detail=detail)
+
+        if not isinstance(query, dict):
+            detail = {'q': ['Query must be a dictionary']}
+            raise MalformedQueryError(detail=detail)
+
+        queryset = queryset.filter(__raw__=query)
+
+        try:
+            # Execute the queryset in order to detect errors with the query
+            next(iter(queryset))
+        except OperationFailure as exc:
+            detail = {'q': [exc.args[0]]}
+            raise MalformedQueryError(detail=detail)
+        except StopIteration:
+            pass
+
+    return queryset
+
+
+class MalformedQueryError(APIException):
+
+    status_code = 400
+    default_detail = 'Malformed query.'
+    default_code = 'malformed_query'
+
+
+class QueryFilterMixin:
+    """
+    This mixin allows filtering results when the 'q' parameter is provided
+    (example: 'GET /v1/resources?q={"names":"foo"}'). This has effect only
+    when listing the collection.
+    """
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        if self.request.method == 'GET' and self.get == self.list:
+            queryset = query_filter(self.request, queryset)
+        return queryset
+
+
+class ResourceViewSet(QueryFilterMixin, ModelViewSet):
 
     queryset = Resource.objects.all()
     serializer_class = ResourceSerializer
@@ -65,7 +119,7 @@ class ResourceViewSet(ModelViewSet):
     lookup_field = 'names'
 
 
-class GroupViewSet(ModelViewSet):
+class GroupViewSet(QueryFilterMixin, ModelViewSet):
 
     queryset = Group.objects.all()
     serializer_class = GroupSerializer
@@ -78,6 +132,7 @@ class GroupViewSet(ModelViewSet):
 
         if request.method == 'GET':
             queryset = group.members()
+            queryset = query_filter(self.request, queryset)
             serializer = ResourceSerializer(queryset, many=True)
             return Response(serializer.data)
 
@@ -101,7 +156,7 @@ class GroupViewSet(ModelViewSet):
         raise AssertionError('Unsupported method: %s' % request.method)
 
 
-class ApplicationViewSet(ModelViewSet):
+class ApplicationViewSet(QueryFilterMixin, ModelViewSet):
 
     queryset = Application.objects.all()
     serializer_class = ApplicationSerializer
