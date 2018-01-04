@@ -37,6 +37,7 @@ from teacup.apiserver import views
 
 router = DefaultRouter()
 
+router.register(r'agents', views.AgentViewSet)
 router.register(r'resources', views.ResourceViewSet)
 router.register(r'groups', views.GroupViewSet)
 router.register(r'apps', views.ApplicationViewSet)

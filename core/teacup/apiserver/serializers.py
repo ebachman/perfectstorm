@@ -44,6 +44,7 @@ from rest_framework_mongoengine.serializers import (
 )
 
 from teacup.apiserver.models import (
+    Agent,
     Application,
     ComponentLink,
     Group,
@@ -66,13 +67,20 @@ class EscapedDynamicField(Field):
         return value
 
 
+class AgentSerializer(DocumentSerializer):
+
+    class Meta:
+        model = Agent
+        fields = ('id', 'name', 'heartbeat')
+
+
 class ResourceSerializer(DocumentSerializer):
 
     snapshot = EscapedDynamicField()
 
     class Meta:
         model = Resource
-        fields = ('type', 'names', 'host', 'image', 'snapshot')
+        fields = ('type', 'names', 'owner', 'host', 'image', 'snapshot')
 
 
 class GroupSerializer(DocumentSerializer):

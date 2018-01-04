@@ -27,8 +27,8 @@
 # of the authors and should not be interpreted as representing official policies,
 # either expressed or implied, of the Perfect Storm Project.
 
-import datetime
 import json
+from datetime import datetime
 
 from pymongo.errors import OperationFailure
 
@@ -44,6 +44,7 @@ from rest_framework.viewsets import ModelViewSet as SqlModelViewSet
 from rest_framework_mongoengine.viewsets import ModelViewSet
 
 from teacup.apiserver.models import (
+    Agent,
     Application,
     Group,
     Recipe,
@@ -52,6 +53,7 @@ from teacup.apiserver.models import (
 )
 
 from teacup.apiserver.serializers import (
+    AgentSerializer,
     ApplicationSerializer,
     GroupAddRemoveMembersSerializer,
     GroupSerializer,
@@ -109,6 +111,24 @@ class QueryFilterMixin:
         if self.request.method == 'GET' and self.get == self.list:
             queryset = query_filter(self.request, queryset)
         return queryset
+
+
+class HeartbeatMixin:
+
+    @detail_route(methods=['POST'])
+    def heartbeat(self, request, **kwargs):
+        obj = self.get_object()
+        obj.heartbeat = datetime.now()
+        obj.save()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class AgentViewSet(QueryFilterMixin, HeartbeatMixin, ModelViewSet):
+
+    queryset = Agent.objects.all()
+    serializer_class = AgentSerializer
+
+    lookup_field = 'id'
 
 
 class ResourceViewSet(QueryFilterMixin, ModelViewSet):
@@ -172,7 +192,7 @@ class RecipeViewSet(SqlModelViewSet):
     lookup_field = 'name'
 
 
-class TriggerViewSet(SqlModelViewSet):
+class TriggerViewSet(HeartbeatMixin, SqlModelViewSet):
 
     queryset = Trigger.objects.all()
     serializer_class = TriggerSerializer
@@ -208,11 +228,4 @@ class TriggerViewSet(SqlModelViewSet):
                 {'status': ["Trigger is not in 'pending' state"]},
                 status=status.HTTP_409_CONFLICT)
 
-        return Response(status=status.HTTP_204_NO_CONTENT)
-
-    @detail_route(methods=['POST'])
-    def heartbeat(self, request, uuid=None):
-        trigger = self.get_object()
-        trigger.heartbeat = datetime.datetime.now()
-        trigger.save()
         return Response(status=status.HTTP_204_NO_CONTENT)

@@ -36,19 +36,25 @@ from django.db import models
 
 from jsonfield import JSONField
 
+import mongoengine
 from mongoengine import (
+    DateTimeField,
     Document,
     EmbeddedDocument,
     EmbeddedDocumentField,
     EmbeddedDocumentListField,
     IntField,
     ListField,
+    QuerySet,
     ReferenceField,
     StringField,
     ValidationError,
 )
 
 from mongoengine.fields import BaseField
+
+
+HEARTBEAT_DURATION = timedelta(seconds=60)
 
 
 def _escape_char(matchobj, chr=chr, ord=ord):
@@ -126,10 +132,35 @@ class EscapedDynamicField(BaseField):
         return super().prepare_query_value(op, self.to_mongo(value))
 
 
+class AgentQuerySet(QuerySet):
+
+    def stale(self):
+        threshold = datetime.now() - HEARTBEAT_DURATION
+        return self.filter(heartbeat__lt=threshold)
+
+
+class Agent(Document):
+
+    name = StringField(min_length=1, required=True)
+    heartbeat = DateTimeField(default=datetime.now)
+
+    meta = {
+        'queryset_class': AgentQuerySet,
+        'indexes': [
+            'name',
+            'heartbeat',
+        ],
+    }
+
+    def __str__(self):
+        return self.name
+
+
 class Resource(Document):
 
     type = StringField(min_length=1, required=True)
     names = ListField(StringField(min_length=1), min_length=1, required=True)
+    owner = ReferenceField(Agent, reverse_delete_rule=mongoengine.CASCADE, required=True)
 
     host = StringField(min_length=1, null=True)
     image = StringField(min_length=1, null=True)
@@ -140,6 +171,7 @@ class Resource(Document):
         'indexes': [
             'type',
             'names',
+            'owner',
         ],
     }
 
@@ -273,7 +305,7 @@ class Application(Document):
 class TriggerQuerySet(models.QuerySet):
 
     def stale(self):
-        threshold = datetime.now() - Trigger.HEARTBEAT_DURATION
+        threshold = datetime.now() - HEARTBEAT_DURATION
         return self.filter(status='running', heartbeat__lt=threshold)
 
 
@@ -285,8 +317,6 @@ class Trigger(models.Model):
         ('done', 'Done'),
         ('error', 'Error'),
     )
-
-    HEARTBEAT_DURATION = timedelta(seconds=60)
 
     name = models.SlugField()
     uuid = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
