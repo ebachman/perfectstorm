@@ -27,13 +27,13 @@
 # of the authors and should not be interpreted as representing official policies,
 # either expressed or implied, of the Perfect Storm Project.
 
-import threading
 import time
 import traceback
 from urllib.parse import urljoin
 
 from . import exceptions
 from .base import Model, Collection
+from .heartbeat import HeartbeatModelMixin
 
 
 def json_exception(exc_value):
@@ -45,6 +45,13 @@ def json_exception(exc_value):
         'exception': traceback.format_exception_only(exc_type, exc_value),
         'traceback': traceback.format_exception(exc_type, exc_value, exc_tb),
     }
+
+
+class Agent(HeartbeatModelMixin, Model):
+
+    class Meta:
+        path = '/v1/agents/'
+        id_field = 'id'
 
 
 class Resource(Model):
@@ -98,48 +105,17 @@ class Recipe(Model):
         id_field = 'name'
 
 
-class TriggerHeartbeatThread(threading.Thread):
-
-    def __init__(self, trigger):
-        super().__init__()
-        self.trigger = trigger
-        self._cancel_event = threading.Event()
-
-    def run(self):
-        trigger = self.trigger
-        interval = trigger.Meta.heartbeat_interval
-        event = self._cancel_event
-
-        while not event.wait(interval):
-            trigger.heartbeat()
-
-    def cancel(self):
-        self._cancel_event.set()
-
-
 class TriggerHandler:
 
     def __init__(self, trigger):
         self.trigger = trigger
-        self._thread = TriggerHeartbeatThread(self.trigger)
-
-    def start_heartbeat(self):
-        if self._thread is None:
-            raise RuntimeError('handlers can only be used once')
-        self._thread.start()
-
-    def cancel_heartbeat(self):
-        if self._thread is None:
-            return
-        self._thread.cancel()
-        self._thread = None
 
     def __enter__(self):
-        self.start_heartbeat()
+        self.trigger.heartbeat.start()
         return self.trigger
 
     def __exit__(self, exc_type, exc_value, exc_tb):
-        self.cancel_heartbeat()
+        self.trigger.heartbeat.stop()
 
         if self.trigger.is_complete():
             return
@@ -150,12 +126,11 @@ class TriggerHandler:
             self.trigger.fail(exc_value)
 
 
-class Trigger(Model):
+class Trigger(HeartbeatModelMixin, Model):
 
     class Meta:
         path = 'v1/triggers/'
         id_field = 'uuid'
-        heartbeat_interval = 30
 
     def is_pending(self):
         return self['status'] == 'pending'
@@ -170,12 +145,10 @@ class Trigger(Model):
         return self['status'] == 'error'
 
     def handle(self):
-        self._post('handle')
+        url = urljoin(self.url, 'handle')
+        self.session.post(url)
         self.refresh()
         return TriggerHandler(self)
-
-    def heartbeat(self):
-        self._post('heartbeat')
 
     def complete(self, result=None, status='done'):
         if result is None:
