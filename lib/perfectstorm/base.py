@@ -193,6 +193,11 @@ class Manager:
         self.model = model
         self.session = session
 
+    def __call__(self, session=None):
+        if session is None:
+            session = self.session
+        return self.__class__(model=self.model, session=session)
+
     @property
     def url(self):
         session = self.session if self.session is not None else current_session()
