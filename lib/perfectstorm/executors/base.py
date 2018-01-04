@@ -1,3 +1,4 @@
+# Copyright (c) 2017, Composure.ai
 # Copyright (c) 2018, Andrea Corbellini
 # All rights reserved.
 #
@@ -27,64 +28,105 @@
 # either expressed or implied, of the Perfect Storm Project.
 
 import abc
-import collections
+import time
 
-from . import PollingExecutor
-
-
-SnapshotDiff = collections.namedtuple('SnapshotDiff', 'created updated deleted')
+from ..entities import Agent
 
 
-class DiscoveryExecutor(PollingExecutor):
+class BaseExecutor(metaclass=abc.ABCMeta):
 
-    def __init__(self, **kwargs):
-        self.snapshot = None
-        super().__init__(**kwargs)
-
-    def poll(self):
-        curr_snapshot = self.take_current_snapshot()
-        prev_snapshot = self.snapshot
-        self.snapshot = curr_snapshot
-
-        if prev_snapshot is None:
-            prev_snapshot = self.take_stored_snapshot()
-
-        diff = self.compare_snapshots(prev_snapshot, curr_snapshot)
-        self.snapshot_diff = SnapshotDiff(*diff)
-        self.snapshot = curr_snapshot
-
-        return any(self.snapshot_diff)
+    def before_run(self):
+        pass
 
     def run(self):
-        for resource in self.snapshot_diff.created:
-            self.create_resource(resource)
+        self.before_run()
 
-        for resource in self.snapshot_diff.updated:
-            self.update_resource(resource)
-
-        for resource in self.snapshot_diff.deleted:
-            self.delete_resource(resource)
-
-    @abc.abstractmethod
-    def take_current_snapshot(self):
-        raise NotImplementedError
+        try:
+            self.run_inner()
+        except Exception as exc:
+            self.run_error(exc)
+        finally:
+            self.after_run()
 
     @abc.abstractmethod
-    def take_stored_snapshot(self):
+    def run_inner(self):
+        pass
+
+    def after_run(self):
+        pass
+
+    def run_error(self, exc):
+        self.error(exc)
+
+    def error(self, exc):
+        raise exc
+
+
+class AgentExecutor(BaseExecutor):
+
+    @property
+    @abc.abstractmethod
+    def agent_name(self):
         raise NotImplementedError
 
-    @abc.abstractmethod
-    def compare_snapshots(self, prev, curr):
-        raise NotImplementedError
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.agent = Agent(name=self.agent_name)
+
+    def before_run(self):
+        super().before_run()
+        self.agent.save()
+        self.agent.heartbeat.start()
+
+    def after_run(self):
+        super().after_run()
+        self.agent.heartbeat.stop()
+        self.agent.delete()
+
+
+class LoopExecutor(BaseExecutor):
+
+    def run_inner(self):
+        while True:
+            try:
+                self.wait()
+            except Exception as exc:
+                self.wait_error(exc)
+            try:
+                self.cycle()
+            except Exception as exc:
+                self.cycle_error(exc)
 
     @abc.abstractmethod
-    def create_resource(self, resource):
+    def wait(self):
         raise NotImplementedError
 
-    @abc.abstractmethod
-    def update_resource(self, resource):
-        raise NotImplementedError
+    def wait_error(self, exc):
+        self.error(exc)
 
     @abc.abstractmethod
-    def delete_resource(self, resource):
+    def cycle(self):
         raise NotImplementedError
+
+    def cycle_error(self, exc):
+        self.error(exc)
+
+
+class PollingExecutor(LoopExecutor):
+
+    poll_interval = 1
+
+    def wait(self):
+        while not self.poll():
+            self.sleep()
+
+    def sleep(self):
+        time.sleep(self.poll_interval)
+
+    @abc.abstractmethod
+    def poll(self):
+        raise NotImplementedError
+
+    def wait_error(self, exc):
+        super().wait_error(exc)
+        self.sleep()
