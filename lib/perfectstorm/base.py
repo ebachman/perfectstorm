@@ -287,16 +287,19 @@ class Model(metaclass=ModelMeta):
         try:
             return self._data[name]
         except KeyError:
-            raise AttributeError(name) from None
+            raise AttributeError(name)
 
     def __setattr__(self, name, value):
-        self._data[name] = value
+        if name in self.__dict__:
+            self.__dict__[name] = value
+        else:
+            self._data[name] = value
 
     def __delattr__(self, name):
         try:
             del self._data[name]
         except KeyError:
-            raise AttributeError(name) from None
+            raise AttributeError(name)
 
     def refresh(self):
         """Fetch the data from the API server for this object."""
