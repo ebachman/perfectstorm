@@ -26,7 +26,7 @@
 # of the authors and should not be interpreted as representing official policies,
 # either expressed or implied, of the Perfect Storm Project.
 
-from . import base
+from .base import connect
 from .entities import (
     Application,
     Group,
@@ -47,16 +47,3 @@ __all__ = [
 
 version_info = (0, 1)
 __version__ = '0.1'
-
-DEFAULT_HOST = '127.0.0.1'
-DEFAULT_PORT = 8000
-
-
-def connect(host=None, port=None):
-    if host is None:
-        host = DEFAULT_HOST
-    if port is None:
-        port = DEFAULT_PORT
-    session = base.Session(host, port)
-    session.__enter__()
-    return session

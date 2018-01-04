@@ -37,7 +37,12 @@ from requests import HTTPError
 from .exceptions import ObjectNotFound, MultipleObjectsReturned
 
 
-_local = threading.local()
+_lock = threading.RLock()
+_global_session = None
+_local_sessions = threading.local()
+
+DEFAULT_HOST = '127.0.0.1'
+DEFAULT_PORT = 8000
 
 
 def appendslash(url):
@@ -51,14 +56,32 @@ def json_compact(*args, **kwargs):
 
 def current_session():
     try:
-        return _local.session_stack[-1]
+        return _local_sessions.session_stack[-1]
     except (AttributeError, IndexError):
-        raise RuntimeError('No active session found')
+        pass
+
+    session = _global_session
+    if session is not None:
+        return session
+
+    raise RuntimeError('No active connections found. You must call connect() or use a Session object in a context manager')
+
+
+def connect(host=None, port=None):
+    global _global_session
+    session = Session(host, port)
+    with _lock:
+        _global_session = session
+    return session
 
 
 class Session:
 
-    def __init__(self, host, port):
+    def __init__(self, host=None, port=None):
+        if host is None:
+            host = DEFAULT_HOST
+        if port is None:
+            port = DEFAULT_PORT
         self.api_root = 'http://%s:%d/' % (quote(host), port)
 
     def request(self, method, path, **kwargs):
@@ -90,14 +113,14 @@ class Session:
 
     def __enter__(self):
         try:
-            stack = _local.session_stack
+            stack = _local_sessions.session_stack
         except AttributeError:
-            stack = _local.session_stack = []
+            stack = _local_sessions.session_stack = []
         stack.append(self)
         return self
 
     def __exit__(self, exc_type, exc_value, exc_tb):
-        popped = _local.session_stack.pop(-1)
+        popped = _local_sessions.session_stack.pop(-1)
         assert popped is self
 
 
