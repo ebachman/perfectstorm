@@ -40,7 +40,6 @@ from rest_framework.serializers import (
 
 from rest_framework_mongoengine.serializers import (
     DocumentSerializer,
-    DynamicDocumentSerializer,
     EmbeddedDocumentSerializer,
 )
 
@@ -67,21 +66,13 @@ class EscapedDynamicField(Field):
         return value
 
 
-class ResourceSerializer(DynamicDocumentSerializer):
+class ResourceSerializer(DocumentSerializer):
 
     snapshot = EscapedDynamicField()
 
     class Meta:
         model = Resource
         fields = ('type', 'names', 'host', 'image', 'snapshot')
-
-    def to_internal_value(self, data):
-        try:
-            del data['pk']
-        except (AttributeError, KeyError):
-            pass
-
-        return super().to_internal_value(data)
 
 
 class GroupSerializer(DocumentSerializer):
