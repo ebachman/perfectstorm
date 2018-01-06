@@ -1,208 +1,98 @@
+# Copyright (c) 2017, Composure.ai
+# Copyright (c) 2018, Andrea Corbellini
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+#
+# 1. Redistributions of source code must retain the above copyright notice, this
+#    list of conditions and the following disclaimer.
+#
+# 2. Redistributions in binary form must reproduce the above copyright notice,
+#    this list of conditions and the following disclaimer in the documentation
+#    and/or other materials provided with the distribution.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+#
+# The views and conclusions contained in the software and documentation are those
+# of the authors and should not be interpreted as representing official policies,
+# either expressed or implied, of the Perfect Storm Project.
+
 import abc
-import sys
-import time
-import traceback
 
-from .. import exceptions
-from . import PollingExecutor
+from ..entities import Trigger, Recipe
+from . import AgentExecutor, PollingExecutor
 
 
-class TriggerExecutor(PollingExecutor):
-
-    trigger_handler = None
-
-    def __init__(self, trigger_handler=None, **kwargs):
-        if trigger_handler is not None:
-            self.trigger_handler = trigger_handler
-        if self.trigger_handler is None:
-            raise ValueError('no trigger_handler specified')
-        if self.trigger_handler.trigger_name is None:
-            raise ValueError('trigger_handler has no trigger_name')
-        super().__init__(**kwargs)
+class TriggerExecutor(AgentExecutor, PollingExecutor):
 
     @property
-    def trigger_name(self):
-        return self.trigger_handler.trigger_name
+    @abc.abstractmethod
+    def trigger_type(self):
+        raise NotImplementedError
+
+    def get_pending_triggers(self):
+        return Trigger.objects.filter(
+            type=self.trigger_type, status='pending')
 
     def poll(self):
-        self.pending_triggers = self.list_pending_triggers()
-        return bool(self.pending_triggers)
+        pending_triggers = self.get_pending_triggers()
+        if pending_triggers:
+            self.trigger = pending_triggers[0]
+            return True
 
-    def list_pending_triggers(self):
-        return self.api.triggers.filter(name=self.trigger_name, status='pending')
-
-    def run(self):
-        self.handle_pending_triggers()
-
-    def handle_pending_triggers(self):
-        for trigger in self.pending_triggers:
-            self.handle_trigger(trigger)
-
-    def handle_trigger(self, trigger):
-        handler = self.trigger_handler(self, trigger)
-
-        try:
-            handler.handle_trigger()
-        except Exception as exc:
-            handler.handle_trigger_exception(exc)
-
-
-class TriggerHandler(metaclass=abc.ABCMeta):
-
-    trigger_name = None
-
-    def __init__(self, executor, trigger):
-        self.executor = executor
-        self.api = executor.api
-        self.trigger = trigger
-
-    def handle_trigger(self):
-        try:
-            handler = self.trigger.handle()
-        except exceptions.NotFoundError as exc:
-            if exc.request.url == self.trigger.url:
-                return
-            raise
-
-        print('Running trigger', self.trigger.identifier)
-
-        handler.start_heartbeat()
-
-        try:
-            result = self.run_trigger()
-            self.handle_trigger_done(result)
-        finally:
-            handler.cancel_heartbeat()
+    def cycle(self):
+        with self.trigger.handle(self.agent):
+            try:
+                result = self.handle_trigger()
+            except Exception as exc:
+                self.trigger_error(exc)
+            else:
+                self.trigger_done(result)
 
     @abc.abstractmethod
-    def run_trigger(self):
+    def handle_trigger(self):
         raise NotImplementedError
 
-    def handle_trigger_done(self, result=None):
+    def trigger_done(self, result):
         self.trigger.complete(result)
 
-    def handle_trigger_exception(self, exc):
-        print('Exception while handling trigger', self.trigger.identifier, file=sys.stderr)
-        traceback.print_exception(type(exc), exc, exc.__traceback__)
+    def trigger_error(self, exc):
         self.trigger.fail(exc)
+        self.error(exc)
 
 
-class RecipeTriggerHandler(TriggerHandler):
+class RecipeExecutor(TriggerExecutor):
 
-    trigger_name = 'recipe'
+    trigger_type = 'recipe'
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.resources_created = []
-        self.resources_updated = []
-        self.resources_deleted = []
+    def handle_trigger(self):
+        recipe = self.get_recipe()
+        self.run_recipe(recipe)
 
-    def run_trigger(self):
-        self.retrieve_recipe()
+    def get_recipe(self):
+        arguments = self.trigger.arguments
 
-        if self.target_node is not None:
-            nodes = [self.target_node]
-        elif self.target_any_of is not None:
-            nodes = [self.choose_node(self.target_any_of)]
-        elif self.target_all_in is not None:
-            nodes = self.filter_nodes(self.target_all_in)
-        else:
-            raise ValueError('No targets specified')
-
-        for node in nodes:
-            self.run_recipe(node)
-
-        print('Created {} new resources, updated {} resources, deleted {} resources from recipe {!r}'.format(
-            len(self.resources_created), len(self.resources_updated), len(self.resources_deleted), self.recipe.identifier))
-
-        return {
-            'created': self.resources_created,
-            'updated': self.resources_updated,
-            'deleted': self.resources_deleted,
-        }
-
-    def retrieve_recipe(self):
-        arguments = self.trigger['arguments']
-
-        # Find the recipe.
         recipe_name = arguments['recipe']
-        self.recipe = self.api.recipes.get(recipe_name)
+        recipe = Recipe.objects.get(name=recipe_name)
 
-        # Find the options.
-        self.recipe_options = {}
-        if self.recipe.get('options'):
-            self.recipe_options.update(self.recipe.get('options'))
         if arguments.get('options'):
-            self.recipe_options.update(arguments.get('options'))
+            recipe.options.update(arguments['options'])
 
-        # Find the params.
-        self.recipe_params = {}
-        if self.recipe.get('params'):
-            self.recipe_params.update(self.recipe.get('params'))
         if arguments.get('params'):
-            self.recipe_params.update(arguments.get('params'))
+            recipe.params.update(arguments['params'])
 
-        # Find the target.
-        self.target_node = None
-        self.target_any_of = None
-        self.target_all_in = None
-
-        if arguments.get('targetNode'):
-            matching_nodes = self.api.query(_id=arguments.get('targetNode'))
-            assert len(matching_nodes) == 1
-
-            self.target_node = matching_nodes[0]
-        else:
-            for databag in (arguments, self.recipe):
-                for keyword, attribute in (('targetAnyOf', 'target_any_of'),
-                                           ('targetAllIn', 'target_all_in')):
-                    value = databag.get(keyword)
-                    if value:
-                        group = self.api.groups.get(value)
-                        setattr(self, attribute, group)
-
-        if self.target_node is None and self.target_any_of is None and self.target_all_in is None:
-            raise ValueError("No targets specified. Use one of 'targetNode', 'targetAnyOf' or 'targetAllIn'")
-
-        # Find the "add to".
-        add_to_name = arguments.get('addTo') or self.recipe.get('addTo')
-
-        if add_to_name:
-             self.add_to = self.api.groups.get(add_to_name)
-        else:
-            self.add_to = None
-
-    def filter_nodes(self, group):
-        return group.members()
-
-    @abc.abstractmethod
-    def choose_node(self, group):
-        raise NotImplementedError
+        return recipe
 
     @abc.abstractmethod
     def run_recipe(self):
         raise NotImplementedError
-
-    def create_resource(self, resource_id):
-        self.wait_resource(resource_id)
-        if self.add_to is not None:
-            self.add_to.add_members([resource_id])
-
-        if resource_id not in self.resources_created:
-            self.resources_created.append(resource_id)
-
-    def update_resource(self, resource_id):
-        if self.add_to is not None:
-            self.add_to.add_members([resource_id])
-
-        if resource_id not in self.resources_updated:
-            self.resources_updated.append(resource_id)
-
-    def delete_resource(self, resource_id):
-        if resource_id not in self.resources_deleted:
-            self.resources_deleted.append(resource_id)
-
-    def wait_resource(self, resource_id):
-        # HACK: wait for the new resources to be discovered before adding them to groups.
-        while not self.api.query(_id=resource_id):
-            self.executor.sleep()

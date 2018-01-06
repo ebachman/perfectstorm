@@ -66,12 +66,12 @@ class AgentExecutor(BaseExecutor):
 
     @property
     @abc.abstractmethod
-    def agent_name(self):
+    def agent_type(self):
         raise NotImplementedError
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.agent = Agent(name=self.agent_name)
+        self.agent = Agent(type=self.agent_type)
 
     def before_run(self):
         super().before_run()

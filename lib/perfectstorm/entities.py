@@ -130,39 +130,35 @@ class Trigger(HeartbeatModelMixin, Model):
 
     class Meta:
         path = 'v1/triggers/'
-        id_field = 'uuid'
+        id_field = 'id'
 
     def is_pending(self):
-        return self['status'] == 'pending'
+        return self.status == 'pending'
 
     def is_running(self):
-        return self['status'] == 'running'
+        return self.status == 'running'
 
     def is_complete(self):
-        return self['status'] in ('done', 'error')
+        return self.status in ('done', 'error')
 
     def is_error(self):
-        return self['status'] == 'error'
+        return self.status == 'error'
 
-    def handle(self):
-        url = urljoin(self.url, 'handle')
-        self.session.post(url)
+    def handle(self, agent):
+        url = urljoin(self.url + '/', 'handle')
+        self.session.post(url, json={'agent': agent.id})
         self.refresh()
         return TriggerHandler(self)
 
     def complete(self, result=None, status='done'):
         if result is None:
             result = {}
-
-        self['status'] = status
-        self['result'] = result
-
-        self.patch(['status', 'result'])
+        self.status = status
+        self.result = result
+        self.save()
 
     def fail(self, exception):
-        result = {
-            'exception': json_exception(exception),
-        }
+        result = {'exception': json_exception(exception)}
         self.complete(result, 'error')
 
     def wait(self, poll_interval=1, delete=True, raise_on_error=True):
@@ -181,7 +177,7 @@ class Trigger(HeartbeatModelMixin, Model):
             return
 
         parent_exception = None
-        exc_info = self['result'].get('exception')
+        exc_info = self.result.get('exception')
 
         if exc_info:
             # If the trigger failed because of an exception,

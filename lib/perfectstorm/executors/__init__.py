@@ -35,11 +35,14 @@ from .base import (
 )
 
 from .discovery import DiscoveryExecutor
+from .triggers import TriggerExecutor, RecipeExecutor
 
 __all__ = [
-    'DiscoveryExecutor',
     'AgentExecutor',
     'BaseExecutor',
+    'DiscoveryExecutor',
     'LoopExecutor',
     'PollingExecutor',
+    'RecipeExecutor',
+    'TriggerExecutor',
 ]
