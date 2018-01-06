@@ -32,14 +32,10 @@ from datetime import datetime
 
 from pymongo.errors import OperationFailure
 
-from django.db import transaction
-from django.db.utils import OperationalError
-
 from rest_framework import status
 from rest_framework.decorators import detail_route
 from rest_framework.exceptions import APIException
 from rest_framework.response import Response
-from rest_framework.viewsets import ModelViewSet as SqlModelViewSet
 
 from rest_framework_mongoengine.viewsets import ModelViewSet
 
@@ -59,6 +55,7 @@ from teacup.apiserver.serializers import (
     GroupSerializer,
     RecipeSerializer,
     ResourceSerializer,
+    TriggerHandleSerializer,
     TriggerSerializer,
 )
 
@@ -184,7 +181,7 @@ class ApplicationViewSet(QueryFilterMixin, ModelViewSet):
     lookup_field = 'name'
 
 
-class RecipeViewSet(SqlModelViewSet):
+class RecipeViewSet(QueryFilterMixin, ModelViewSet):
 
     queryset = Recipe.objects.all()
     serializer_class = RecipeSerializer
@@ -192,40 +189,47 @@ class RecipeViewSet(SqlModelViewSet):
     lookup_field = 'name'
 
 
-class TriggerViewSet(HeartbeatMixin, SqlModelViewSet):
+class TriggerViewSet(QueryFilterMixin, HeartbeatMixin, ModelViewSet):
 
     queryset = Trigger.objects.all()
     serializer_class = TriggerSerializer
 
-    lookup_field = 'uuid'
-
-    def get_queryset(self):
-        queryset = self.queryset.all()
-
-        name = self.request.query_params.get('name')
-        status = self.request.query_params.get('status')
-
-        if name:
-            queryset = queryset.filter(name=name)
-        if status:
-            queryset = queryset.filter(status=status)
-
-        return queryset
+    lookup_field = 'id'
 
     @detail_route(methods=['POST'])
-    def handle(self, request, uuid=None):
-        try:
-            with transaction.atomic():
-                trigger = self.get_object()
+    def handle(self, request, **kwargs):
+        trigger = self.get_object()
 
-                if trigger.status != 'pending':
-                    raise OperationalError
+        serializer = TriggerHandleSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        agent = serializer.validated_data['agent']
 
-                trigger.status = 'running'
-                trigger.save()
-        except OperationalError as exc:
+        # Atomically transition the status from 'pending' to 'running', setting the
+        # owner at the same time
+        qs = Trigger.objects.filter(id=trigger.id, status='pending')
+        qs.update(set__status='running', set__owner=agent)
+
+        # Check the status of the trigger. Because we used an atomic operation, the
+        # scenarios are three:
+        #
+        # 1. the trigger was not in 'pending' status, and the trigger was left
+        #    unchanged;
+        # 2. the trigger was in 'pending' status but some other agent handled it
+        #    before us: in this case the trigger will now be in status 'running'
+        #    but the owner will be different from what we expect;
+        # 3. the trigger was in 'pending' status and nobody else other than us
+        #    touched it: the update suceeded.
+        #
+        # Case 3 is what we're interested in; all other cases are errors
+
+        trigger.reload()
+
+        if trigger.status != 'running' or trigger.owner != agent:
+            # Case 1 or 2, error
             return Response(
                 {'status': ["Trigger is not in 'pending' state"]},
                 status=status.HTTP_409_CONFLICT)
 
+        # Case 3, success
         return Response(status=status.HTTP_204_NO_CONTENT)

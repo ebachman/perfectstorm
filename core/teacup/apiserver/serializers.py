@@ -30,18 +30,14 @@
 from rest_framework.serializers import (
     CharField,
     Field,
-    JSONField,
     ListField,
-    ModelSerializer,
     Serializer,
     SlugField,
     SlugRelatedField,
 )
 
-from rest_framework_mongoengine.serializers import (
-    DocumentSerializer,
-    EmbeddedDocumentSerializer,
-)
+from rest_framework_mongoengine.fields import ReferenceField
+from rest_framework_mongoengine.serializers import DocumentSerializer, EmbeddedDocumentSerializer
 
 from teacup.apiserver.models import (
     Agent,
@@ -54,8 +50,6 @@ from teacup.apiserver.models import (
     ServiceReference,
     Trigger,
 )
-
-from teacup.apiserver import validators
 
 
 class EscapedDynamicField(Field):
@@ -71,12 +65,12 @@ class AgentSerializer(DocumentSerializer):
 
     class Meta:
         model = Agent
-        fields = ('id', 'name', 'heartbeat')
+        fields = ('id', 'type', 'heartbeat')
 
 
 class ResourceSerializer(DocumentSerializer):
 
-    snapshot = EscapedDynamicField()
+    snapshot = EscapedDynamicField(default=dict)
 
     class Meta:
         model = Resource
@@ -85,7 +79,7 @@ class ResourceSerializer(DocumentSerializer):
 
 class GroupSerializer(DocumentSerializer):
 
-    query = EscapedDynamicField()
+    query = EscapedDynamicField(default=dict)
 
     class Meta:
         model = Group
@@ -170,7 +164,7 @@ class ApplicationSerializer(DocumentSerializer):
                 self.fail('unknown_service', service=to_service_name, component=to_component_name)
 
             link = ComponentLink(
-                from_component=from_component, to_service=to_service.reference())
+                from_component=from_component, to_service=to_service.to_reference())
 
             validated_links.append(link)
 
@@ -192,59 +186,33 @@ class ApplicationSerializer(DocumentSerializer):
             except Service.DoesNotExist:
                 self.fail('unknown_service', service=service_name, component=component_name)
 
-            validated_expose.append(service.reference())
+            validated_expose.append(service.to_reference())
 
         data['expose'] = validated_expose
 
         return data
 
 
-class TriggerSerializer(ModelSerializer):
+class TriggerSerializer(DocumentSerializer):
 
-    arguments = JSONField(default=dict)
-    result = JSONField(default=dict)
+    arguments = EscapedDynamicField(default=dict)
+    result = EscapedDynamicField(default=dict)
 
     class Meta:
         model = Trigger
-        fields = ('uuid', 'name', 'status', 'arguments', 'result', 'created', 'heartbeat')
+        fields = ('id', 'type', 'status', 'arguments', 'result', 'created', 'heartbeat')
 
 
-class RecipeSerializer(ModelSerializer):
+class TriggerHandleSerializer(Serializer):
 
-    default_error_messages = {
-        'unknown_group': 'Group {group} does not exist',
-    }
+    agent = ReferenceField(Agent)
 
-    options = JSONField(default=dict, validators=[validators.validate_dict])
-    params = JSONField(default=dict, validators=[validators.validate_dict])
 
-    targetAnyOf = SlugField(source='target_any_of.name', allow_null=True, required=False)
-    targetAllIn = SlugField(source='target_all_in.name', allow_null=True, required=False)
-    addTo = SlugField(source='add_to.name', allow_null=True, required=False)
+class RecipeSerializer(DocumentSerializer):
+
+    options = EscapedDynamicField(default=dict)
+    params = EscapedDynamicField(default=dict)
 
     class Meta:
         model = Recipe
-        fields = ('name', 'type', 'content', 'options', 'params', 'targetAnyOf', 'targetAllIn', 'addTo')
-
-    def validate(self, data):
-        def validate_group(key):
-            group = None
-
-            try:
-                group_name = data[key]['name']
-            except KeyError:
-                pass
-            else:
-                if group_name is not None:
-                    try:
-                        group = Group.objects.get(name=group_name)
-                    except Group.DoesNotExist:
-                        self.fail('unknown_group', group=group_name)
-
-            data[key] = group
-
-        validate_group('target_any_of')
-        validate_group('target_all_in')
-        validate_group('add_to')
-
-        return data
+        fields = ('name', 'type', 'content', 'options', 'params', 'target')

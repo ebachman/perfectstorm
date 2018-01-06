@@ -44,7 +44,6 @@ setup(
         'django >= 1.11, < 1.12',
         'django-rest-framework-mongoengine >= 3.3, < 3.4',
         'djangorestframework >= 3.7, < 3.8',
-        'jsonfield >= 2, < 3',
         'mongoengine >= 0.15, < 0.16',
         'pymongo >= 3.6, < 3.7',
         'sphinx >= 1.6.5, < 1.7',

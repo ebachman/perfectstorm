@@ -29,7 +29,6 @@
 
 from django.conf.urls import url, include
 
-from rest_framework.routers import DefaultRouter as LegacyDefaultRouter
 from rest_framework_mongoengine.routers import DefaultRouter
 
 from teacup.apiserver import views
@@ -41,13 +40,8 @@ router.register(r'agents', views.AgentViewSet)
 router.register(r'resources', views.ResourceViewSet)
 router.register(r'groups', views.GroupViewSet)
 router.register(r'apps', views.ApplicationViewSet)
-
-legacy_router = LegacyDefaultRouter()
-
-legacy_router.register(r'recipes', views.RecipeViewSet)
-legacy_router.register(r'triggers', views.TriggerViewSet)
-
-router.registry.extend(legacy_router.registry)
+router.register(r'recipes', views.RecipeViewSet)
+router.register(r'triggers', views.TriggerViewSet)
 
 urlpatterns = [
     url(r'^', include(router.urls)),

@@ -29,12 +29,7 @@
 
 import functools
 import re
-import uuid
 from datetime import datetime, timedelta
-
-from django.db import models
-
-from jsonfield import JSONField
 
 import mongoengine
 from mongoengine import (
@@ -132,33 +127,51 @@ class EscapedDynamicField(BaseField):
         return super().prepare_query_value(op, self.to_mongo(value))
 
 
-class AgentQuerySet(QuerySet):
+class NameMixin:
 
-    def stale(self):
-        threshold = datetime.now() - HEARTBEAT_DURATION
-        return self.filter(heartbeat__lt=threshold)
-
-
-class Agent(Document):
-
-    name = StringField(min_length=1, required=True)
-    heartbeat = DateTimeField(default=datetime.now)
+    name = StringField(min_length=1, unique=True, required=True)
 
     meta = {
-        'queryset_class': AgentQuerySet,
-        'indexes': [
-            'name',
-            'heartbeat',
-        ],
+        'indexes': ['name'],
     }
 
     def __str__(self):
         return self.name
 
 
-class Resource(Document):
+class TypeMixin:
 
     type = StringField(min_length=1, required=True)
+
+    meta = {
+        'indexes': ['type'],
+    }
+
+
+class HeartbeatQuerySet(QuerySet):
+
+    def stale(self):
+        threshold = datetime.now() - HEARTBEAT_DURATION
+        return self.filter(heartbeat__lt=threshold)
+
+
+class HeartbeatMixin:
+
+    heartbeat = DateTimeField(default=datetime.now, required=True)
+
+    meta = {
+        'queryset_class': HeartbeatQuerySet,
+        'indexes': ['heartbeat'],
+    }
+
+
+class Agent(TypeMixin, HeartbeatMixin, Document):
+
+    pass
+
+
+class Resource(TypeMixin, Document):
+
     names = ListField(StringField(min_length=1), min_length=1, required=True)
     owner = ReferenceField(Agent, reverse_delete_rule=mongoengine.CASCADE, required=True)
 
@@ -169,7 +182,6 @@ class Resource(Document):
 
     meta = {
         'indexes': [
-            'type',
             'names',
             'owner',
         ],
@@ -179,39 +191,31 @@ class Resource(Document):
         return self.names[0] if self.names else str(self.pk)
 
 
-class Service(EmbeddedDocument):
+class Service(NameMixin, EmbeddedDocument):
 
     PROTOCOL_CHOICES = (
         ('tcp', 'TCP'),
         ('udp', 'UDP'),
     )
 
-    name = StringField(min_length=1, required=True, unique=True)
-
     protocol = StringField(choices=PROTOCOL_CHOICES, required=True)
     port = IntField(required=True)
 
-    def reference(self):
+    def to_reference(self):
         return ServiceReference(group=self._instance, service_name=self.name)
 
     def __str__(self):
-        return '{}[{}]'.format(self._instance, self.name)
+        return f'{self._instance}[{self.name}]'
 
 
-class Group(Document):
+class Group(NameMixin, Document):
 
     name = StringField(min_length=1, required=True, unique=True)
     services = EmbeddedDocumentListField(Service)
 
-    query = EscapedDynamicField()
+    query = EscapedDynamicField(default=dict, required=True)
     include = ListField(ReferenceField(Resource))
     exclude = ListField(ReferenceField(Resource))
-
-    meta = {
-        'indexes': [
-            'name',
-        ],
-    }
 
     def save(self, *args, write_concern=None, **kwargs):
         if write_concern is None:
@@ -245,14 +249,11 @@ class Group(Document):
         else:
             return Resource.objects.none()
 
-    def __str__(self):
-        return self.name
-
 
 class ServiceReference(EmbeddedDocument):
 
-    group = ReferenceField(Group)
-    service_name = StringField()
+    group = ReferenceField(Group, required=True)
+    service_name = StringField(min_length=1, required=True)
 
     @property
     def service(self):
@@ -271,8 +272,8 @@ class ServiceReference(EmbeddedDocument):
 
 class ComponentLink(EmbeddedDocument):
 
-    from_component = ReferenceField(Group)
-    to_service = EmbeddedDocumentField(ServiceReference)
+    from_component = ReferenceField(Group, required=True)
+    to_service = EmbeddedDocumentField(ServiceReference, required=True)
 
     def clean(self):
         if self.from_component not in self._instance.components:
@@ -284,32 +285,20 @@ class ComponentLink(EmbeddedDocument):
         return '{} -> {}'.format(self.from_component, self.to_service)
 
 
-class Application(Document):
-
-    name = StringField(min_length=1, required=True, unique=True)
+class Application(NameMixin, Document):
 
     components = ListField(ReferenceField(Group))
     links = EmbeddedDocumentListField(ComponentLink)
     expose = EmbeddedDocumentListField(ServiceReference)
 
-    meta = {
-        'indexes': [
-            'name',
-        ],
-    }
 
-    def __str__(self):
-        return self.name
-
-
-class TriggerQuerySet(models.QuerySet):
+class TriggerQuerySet(HeartbeatQuerySet):
 
     def stale(self):
-        threshold = datetime.now() - HEARTBEAT_DURATION
-        return self.filter(status='running', heartbeat__lt=threshold)
+        return super().stale().filter(status='pending')
 
 
-class Trigger(models.Model):
+class Trigger(TypeMixin, HeartbeatMixin, Document):
 
     STATUS_CHOICES = (
         ('pending', 'Pending'),
@@ -318,37 +307,30 @@ class Trigger(models.Model):
         ('error', 'Error'),
     )
 
-    name = models.SlugField()
-    uuid = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    status = models.CharField(max_length=16, choices=STATUS_CHOICES, default='pending')
+    status = StringField(choices=STATUS_CHOICES, default='pending', required=True)
+    owner = ReferenceField(Agent, null=True)
 
-    arguments = JSONField(default=dict)
-    result = JSONField(default=dict)
+    arguments = EscapedDynamicField(default=dict, required=True)
+    result = EscapedDynamicField(default=dict, required=True)
 
-    created = models.DateTimeField(auto_now_add=True)
-    heartbeat = models.DateTimeField(auto_now_add=True)
+    created = DateTimeField(default=datetime.now, required=True)
 
-    objects = TriggerQuerySet.as_manager()
+    meta = {
+        'queryset_class': TriggerQuerySet,
+        'indexes': ['created'],
+        'ordering': ['created'],
+    }
 
-    class Meta:
-        ordering = ('created',)
 
+class Recipe(NameMixin, TypeMixin, Document):
 
-class Recipe(models.Model):
+    content = StringField(required=True)
 
-    type = models.SlugField()
-    name = models.SlugField(unique=True)
-    content = models.TextField(default='')
+    options = EscapedDynamicField(default=dict, required=True)
+    params = EscapedDynamicField(default=dict, required=True)
 
-    options = JSONField(default=dict)
-    params = JSONField(default=dict)
+    target = ReferenceField(Resource, null=True)
 
-    target_any_of = models.SlugField(null=True, db_index=False)
-    target_all_in = models.SlugField(null=True, db_index=False)
-    add_to = models.SlugField(null=True, db_index=False)
-
-    class Meta:
-        ordering = ('name',)
-
-    def __str__(self):
-        return '{} ({})'.format(self.name, self.type)
+    meta = {
+        'indexes': ['target'],
+    }
