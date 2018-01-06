@@ -147,19 +147,33 @@ class Collection:
         return self.__class__(model=self.model, query=query, session=self.session)
 
     def __iter__(self):
-        if self._elems is None:
-            with self._lock:
-                if self._elems is None:
-                    self._elems = self._retrieve()
+        self._retrieve()
         return iter(self._elems)
 
+    def __len__(self):
+        self._retrieve()
+        return len(self._elems)
+
+    def __getitem__(self, index):
+        self._retrieve()
+        return self._elems[index]
+
     def _retrieve(self):
-        if self.query:
-            params = {'q': json_compact(self.query)}
-        else:
-            params = None
-        documents = self.session.get(self.model.Meta.path, params=params)
-        return [self.model(doc, session=self.session) for doc in documents]
+        if self._elems is not None:
+            return self._elems
+
+        with self._lock:
+            if self._elems is not None:
+                return self._elems
+
+            if self.query:
+                params = {'q': json_compact(self.query)}
+            else:
+                params = None
+            documents = self.session.get(self.model.Meta.path, params=params)
+            self._elems = [self.model(doc, session=self.session) for doc in documents]
+
+        return self._elems
 
     def get(self, *args, **kwargs):
         query = dict(*args, **kwargs)
