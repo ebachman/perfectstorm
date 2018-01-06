@@ -244,8 +244,8 @@ class TriggerModel(UserResourceModel, APIResourceModel):
 
     resource_name = 'triggers'
 
-    name = fields.StringField(required=True)
-    uuid = fields.StringField()
+    id = fields.StringField()
+    type = fields.StringField(required=True)
     status = fields.StringField()
 
     arguments = DictField(required=False)
@@ -253,7 +253,7 @@ class TriggerModel(UserResourceModel, APIResourceModel):
 
     @property
     def object_id(self):
-        return self.uuid
+        return self.id
 
 
 class RecipeModel(UserResourceModel, APIResourceModel):
@@ -679,8 +679,8 @@ class TriggersResourceClient(
             run_error='Status: {ERROR}{BOLD}error{RESET}',
         )
 
-    def run(self, name, arguments, detach=False, poll_interval=1):
-        trigger = self.api_model(name=name, arguments=arguments)
+    def run(self, trigger_type, arguments, detach=False, poll_interval=1):
+        trigger = self.api_model(type=trigger_type, arguments=arguments)
 
         trigger = self.create(trigger)
 
@@ -690,16 +690,16 @@ class TriggersResourceClient(
         try:
             while trigger.status not in ('done', 'error'):
                 time.sleep(poll_interval)
-                trigger = self.perform_get(trigger.uuid)
+                trigger = self.perform_get(trigger.id)
         except (ValidationError, ClientError) as exc:
-            self.handle_get_error(trigger.uuid, exc)
+            self.handle_get_error(trigger.id, exc)
 
         self.handle_run_success(trigger)
 
         try:
-            self.perform_delete(trigger.uuid)
+            self.perform_delete(trigger.id)
         except ClientError as exc:
-            self.handle_delete_error(trigger.uuid, exc)
+            self.handle_delete_error(trigger.id, exc)
 
     def handle_run_success(self, obj):
         message_id = 'run_done' if obj.status == 'done' else 'run_error'
@@ -710,7 +710,7 @@ class TriggersResourceClient(
     def prune(self):
         for trigger in self.perform_list():
             if trigger.status in ('done', 'error'):
-                self.delete(trigger.uuid)
+                self.delete(trigger.id)
 
 
 #
