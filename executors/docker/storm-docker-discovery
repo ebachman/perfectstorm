@@ -41,7 +41,7 @@ DockerSnapshot = collections.namedtuple('DockerSnapshot', 'info containers')
 
 class DockerDiscoveryExecutor(DiscoveryExecutor):
 
-    agent_name = 'docker'
+    agent_type = 'docker'
 
     _url_prefix = 'http+unix://%2Fvar%2Frun%2Fdocker.sock/'
 
