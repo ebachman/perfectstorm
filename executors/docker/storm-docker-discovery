@@ -161,7 +161,7 @@ class DockerDiscoveryExecutor(DiscoveryExecutor):
     def delete_resource(self, resource):
         resource_type, data = resource
         assert resource_type == 'container'
-        Resources(names=data['Id']).delete()
+        Resource(names=data['Id']).delete()
 
 
 class DockerDiscoveryClient(APIClient):

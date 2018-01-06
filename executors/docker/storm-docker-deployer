@@ -28,29 +28,17 @@
 # of the authors and should not be interpreted as representing official policies,
 # either expressed or implied, of the Perfect Storm Project.
 
-import argparse
-import contextlib
-import functools
-import os.path
-import random
 import re
 import shlex
 import subprocess
 
 import yaml
 
-from perfectstorm import Resource
 from perfectstorm.clients import APIClient
 from perfectstorm.executors import RecipeExecutor
 
 
 _var_re = re.compile(r'(?<!\$)\$(\w+|{[^}]*})')
-
-
-def run_docker(node_ip, args):
-    docker_command = ['docker', '-H', node_ip] + args
-    process = subprocess.run(docker_command, input=b'', check=True, stdout=subprocess.PIPE)
-    return process.stdout.decode().strip().split('\n')
 
 
 class DockerCommand:
