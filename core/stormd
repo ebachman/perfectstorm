@@ -1,4 +1,32 @@
 #!/usr/bin/env python3
+# Copyright (c) 2017, Composure.ai
+# Copyright (c) 2018, Andrea Corbellini
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+#
+# 1. Redistributions of source code must retain the above copyright notice, this
+#    list of conditions and the following disclaimer.
+#
+# 2. Redistributions in binary form must reproduce the above copyright notice,
+#    this list of conditions and the following disclaimer in the documentation
+#    and/or other materials provided with the distribution.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+#
+# The views and conclusions contained in the software and documentation are those
+# of the authors and should not be interpreted as representing official policies,
+# either expressed or implied, of the Perfect Storm Project.
 
 import argparse
 import logging
@@ -39,7 +67,7 @@ def parse_args():
         description='Perfect Storm Core API Server')
 
     parser.add_argument(
-        '-b', '--bind', metavar='ADDRESS', type=address, default=[], action='append',
+        '-b', '--bind', metavar='HOST[:PORT]', type=address, default=[], action='append',
         help='Address to bind. This can be an IPv4 address, and IPv6 address or a host name. The address can '
              'optionally include a port number. If no port is specified, the port specified with -p/--port is '
              'used, or the default port if -p/--port is not provided. This option can be specified multiple '
@@ -47,6 +75,9 @@ def parse_args():
     parser.add_argument(
         '-p', '--port', metavar='PORT', type=int, default=8000, dest='default_port',
         help='Port to bind. See also -b/--bind. Default: 8000')
+    parser.add_argument(
+        '--mongo', metavar='HOST[:PORT]', type=address, default=('127.0.0.1', 27017),
+        help='MongoDB address. If port is not specified, the default port 27017 is used. Default: 127.0.0.1')
 
     parser.add_argument(
         '--no-tasks', action='store_false', dest='run_tasks',
@@ -56,6 +87,9 @@ def parse_args():
 
     if not options.bind:
         options.bind.append(('127.0.0.1', None))
+
+    if options.mongo[1] is None:
+        options.mongo = (options.mongo[0], 27017)
 
     return options
 
@@ -77,6 +111,7 @@ def run():
     options = parse_args()
 
     os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'teacup.settings')
+    os.environ['STORM_MONGODB'] = 'mongodb://{}:{}/perfectstorm'.format(*options.mongo)
 
     setup_logging()
 

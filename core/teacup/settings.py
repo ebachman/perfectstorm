@@ -132,20 +132,11 @@ REST_FRAMEWORK = {
 
 
 # MongoDB
+# http://docs.mongoengine.org/guide/connecting.html
 
-DEFAULT_MONGO_HOST = '127.0.0.1'
-DEFAULT_MONGO_PORT = '27017'
-DEFAULT_MONGO_DB_NAME = 'prefectstorm'
-
-MONGO_HOST = os.environ.get('DJANGO_MONGO_HOST') or DEFAULT_MONGO_HOST
-MONGO_PORT = os.environ.get('DJANGO_MONGO_PORT') or DEFAULT_MONGO_PORT
-MONGO_DB_NAME = os.environ.get('DJANGO_MONGO_DB') or DEFAULT_MONGO_DB_NAME
+DEFAULT_MONGODB_URI = 'mongodb://127.0.0.1/perfectstorm/'
+MONGODB_URI = os.environ.get('STORM_MONGODB') or DEFAULT_MONGODB_URI
 
 import mongoengine
-
-mongoengine.connect(
-    host=MONGO_HOST,
-    port=int(MONGO_PORT),
-    db=MONGO_DB_NAME,
-    connect=False,
-)
+mongoengine.connect(host=MONGODB_URI, connect=False)
+del mongoengine
