@@ -315,7 +315,7 @@ class Model(metaclass=ModelMeta):
         except KeyError:
             raise AttributeError(name)
 
-    def refresh(self):
+    def reload(self):
         """Fetch the data from the API server for this object."""
         try:
             response_data = self.session.get(self.url)

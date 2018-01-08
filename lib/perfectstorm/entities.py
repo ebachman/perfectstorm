@@ -147,7 +147,7 @@ class Trigger(HeartbeatModelMixin, Model):
     def handle(self, agent):
         url = urljoin(self.url + '/', 'handle')
         self.session.post(url, json={'agent': agent.id})
-        self.refresh()
+        self.reload()
         return TriggerHandler(self)
 
     def complete(self, result=None, status='done'):
