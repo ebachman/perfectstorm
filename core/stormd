@@ -110,7 +110,7 @@ def setup_logging():
 def run():
     options = parse_args()
 
-    os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'teacup.settings')
+    os.environ['DJANGO_SETTINGS_MODULE'] = 'teacup.settings'
     os.environ['STORM_MONGODB'] = 'mongodb://{}:{}/perfectstorm'.format(*options.mongo)
 
     setup_logging()
