@@ -279,15 +279,11 @@ class Model(metaclass=ModelMeta):
 
     @property
     def id(self):
-        """Return the identifier that should be used in URLs."""
-        object_id = self._data.get(self.Meta.id_field)
-
-        if isinstance(object_id, (tuple, list)):
-            # Pick the first element of lists
-            object_id = object_id[0] if object_id else None
-        elif isinstance(object_id, dict):
-            raise TypeError('Unsupported ID field type: %s' % type(object_id).__name__)
-
+        object_id = self._data.get('id')
+        if object_id is None:
+            object_id = self._data.get(self.Meta.id_field)
+            if isinstance(object_id, (tuple, list)):
+                object_id = object_id[0]
         return object_id
 
     @property
