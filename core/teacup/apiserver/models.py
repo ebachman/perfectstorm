@@ -30,6 +30,7 @@
 import functools
 import re
 import time
+import uuid
 from datetime import datetime, timedelta
 
 from mongoengine import (
@@ -113,6 +114,16 @@ def cleanup_expired_agents():
     _cleanup_timestamp = time.time()
 
 
+class FancyIdField(StringField):
+
+    def __init__(self, prefix, *args, **kwargs):
+        self.prefix = prefix
+        super().__init__(*args, required=True, primary_key=True, null=False, default=self._generate_new, **kwargs)
+
+    def _generate_new(self):
+        return '-'.join((self.prefix, uuid.uuid1().hex))
+
+
 class EscapedDynamicField(BaseField):
     r"""
     A DynamicField-like field that allows any kind of keys in dictionaries.
@@ -182,6 +193,7 @@ class Agent(TypeMixin, Document):
 
     HEARTBEAT_DURATION = timedelta(seconds=60)
 
+    id = FancyIdField('agent')
     heartbeat = DateTimeField(default=datetime.now, required=True)
 
     meta = {
@@ -192,6 +204,7 @@ class Agent(TypeMixin, Document):
 
 class Resource(TypeMixin, Document):
 
+    id = FancyIdField('resource')
     names = ListField(StringField(min_length=1), min_length=1, required=True)
     owner = ReferenceField(Agent, required=True)
 
@@ -230,6 +243,7 @@ class Service(NameMixin, EmbeddedDocument):
 
 class Group(NameMixin, Document):
 
+    id = FancyIdField('group')
     name = StringField(min_length=1, required=True, unique=True)
     services = EmbeddedDocumentListField(Service)
 
@@ -307,6 +321,7 @@ class ComponentLink(EmbeddedDocument):
 
 class Application(NameMixin, Document):
 
+    id = FancyIdField('app')
     components = ListField(ReferenceField(Group))
     links = EmbeddedDocumentListField(ComponentLink)
     expose = EmbeddedDocumentListField(ServiceReference)
@@ -321,6 +336,7 @@ class Trigger(TypeMixin, Document):
         ('error', 'Error'),
     )
 
+    id = FancyIdField('recipe')
     status = StringField(choices=STATUS_CHOICES, default='pending', required=True)
     owner = ReferenceField(Agent, null=True)
 
@@ -340,6 +356,7 @@ class Trigger(TypeMixin, Document):
 
 class Recipe(NameMixin, TypeMixin, Document):
 
+    id = FancyIdField('recipe')
     content = StringField(required=True)
 
     options = EscapedDynamicField(default=dict, required=True)
