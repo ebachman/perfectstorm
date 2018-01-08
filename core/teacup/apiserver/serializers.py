@@ -52,6 +52,11 @@ from teacup.apiserver.models import (
 )
 
 
+class StrReferenceField(ReferenceField):
+
+    pk_field_class = CharField
+
+
 class EscapedDynamicField(Field):
 
     def to_representation(self, value):
@@ -70,11 +75,12 @@ class AgentSerializer(DocumentSerializer):
 
 class ResourceSerializer(DocumentSerializer):
 
+    owner = StrReferenceField(Agent)
     snapshot = EscapedDynamicField(default=dict)
 
     class Meta:
         model = Resource
-        fields = ('type', 'names', 'owner', 'host', 'image', 'snapshot')
+        fields = ('id', 'type', 'names', 'owner', 'host', 'image', 'snapshot')
 
 
 class GroupSerializer(DocumentSerializer):
@@ -83,7 +89,7 @@ class GroupSerializer(DocumentSerializer):
 
     class Meta:
         model = Group
-        fields = ('name', 'query', 'include', 'exclude', 'services')
+        fields = ('id', 'name', 'query', 'include', 'exclude', 'services')
 
 
 class GroupAddRemoveMembersSerializer(Serializer):
@@ -127,7 +133,7 @@ class ApplicationSerializer(DocumentSerializer):
 
     class Meta:
         model = Application
-        fields = ('name', 'components', 'links', 'expose')
+        fields = ('id', 'name', 'components', 'links', 'expose')
 
     def create(self, validated_data):
         return Application.objects.create(**validated_data)
@@ -205,7 +211,7 @@ class TriggerSerializer(DocumentSerializer):
 
 class TriggerHandleSerializer(Serializer):
 
-    agent = ReferenceField(Agent)
+    agent = StrReferenceField(Agent)
 
 
 class RecipeSerializer(DocumentSerializer):
@@ -215,4 +221,4 @@ class RecipeSerializer(DocumentSerializer):
 
     class Meta:
         model = Recipe
-        fields = ('name', 'type', 'content', 'options', 'params', 'target')
+        fields = ('id', 'name', 'type', 'content', 'options', 'params', 'target')
