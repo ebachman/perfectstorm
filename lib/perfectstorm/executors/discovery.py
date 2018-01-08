@@ -29,7 +29,7 @@
 import abc
 import collections
 
-from .base import AgentExecutor, PollingExecutor
+from .api import AgentExecutor, PollingExecutor
 
 
 SnapshotDiff = collections.namedtuple('SnapshotDiff', 'created updated deleted')

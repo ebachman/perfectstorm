@@ -26,7 +26,7 @@
 # of the authors and should not be interpreted as representing official policies,
 # either expressed or implied, of the Perfect Storm Project.
 
-from .base import connect
+from .api import connect
 from .entities import (
     Application,
     Group,

@@ -33,7 +33,7 @@ import sys
 import time
 import traceback
 
-from . import base
+from . import api
 
 
 class BaseClient(metaclass=abc.ABCMeta):
@@ -95,7 +95,7 @@ class APIClient(BaseClient):
     def add_arguments(self, parser):
         super().add_arguments(parser)
 
-        default_addr = '%s:%d' % (base.DEFAULT_HOST, base.DEFAULT_PORT)
+        default_addr = '%s:%d' % (api.DEFAULT_HOST, api.DEFAULT_PORT)
         parser.add_argument(
             '-S', '--apiserver', metavar='HOST[:PORT]', default=default_addr,
             help='Address to the Perfect Storm API server (default: {})'.format(default_addr))
@@ -103,4 +103,4 @@ class APIClient(BaseClient):
     def connect_api(self):
         host, port = self.options.apiserver.rsplit(':', 1)
         port = int(port)
-        base.connect(host, port)
+        api.connect(host, port)

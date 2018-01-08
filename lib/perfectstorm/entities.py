@@ -32,7 +32,7 @@ import traceback
 from urllib.parse import urljoin
 
 from . import exceptions
-from .base import Model, Collection
+from .api import Model, Collection
 from .heartbeat import HeartbeatModelMixin
 
 
