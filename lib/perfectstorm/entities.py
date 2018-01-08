@@ -33,7 +33,7 @@ from urllib.parse import urljoin
 
 from . import exceptions
 from .api import Model, Collection
-from .heartbeat import HeartbeatModelMixin
+from .heartbeat import Heartbeat
 
 
 def json_exception(exc_value):
@@ -47,7 +47,11 @@ def json_exception(exc_value):
     }
 
 
-class Agent(HeartbeatModelMixin, Model):
+class Agent(Model):
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.__dict__['heartbeat'] = Heartbeat(self)
 
     class Meta:
         path = '/v1/agents/'
@@ -111,12 +115,9 @@ class TriggerHandler:
         self.trigger = trigger
 
     def __enter__(self):
-        self.trigger.heartbeat.start()
         return self.trigger
 
     def __exit__(self, exc_type, exc_value, exc_tb):
-        self.trigger.heartbeat.stop()
-
         if self.trigger.is_complete():
             return
 
@@ -126,7 +127,7 @@ class TriggerHandler:
             self.trigger.fail(exc_value)
 
 
-class Trigger(HeartbeatModelMixin, Model):
+class Trigger(Model):
 
     class Meta:
         path = 'v1/triggers/'

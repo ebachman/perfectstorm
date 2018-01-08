@@ -35,7 +35,7 @@ HEARTBEAT_DURATION = 60
 DEFAULT_INTERVAL = HEARTBEAT_DURATION // 2
 
 
-class PeriodicTask(threading.Thread):
+class _PeriodicTask(threading.Thread):
 
     def __init__(self, func, interval):
         super().__init__()
@@ -75,7 +75,7 @@ class Heartbeat:
         self.instance = instance
         self._thread = None
 
-    def _heartbeat(self):
+    def _post_heartbeat(self):
         url = urljoin(self.instance.url + '/', 'heartbeat')
         self.instance.session.post(url)
 
@@ -83,7 +83,7 @@ class Heartbeat:
         if self._thread is None:
             if interval is None:
                 interval = DEFAULT_INTERVAL
-            self._thread = PeriodicTask(self._heartbeat, interval)
+            self._thread = _PeriodicTask(self._post_heartbeat, interval)
         self._thread.start()
 
     def stop(self):
@@ -92,12 +92,5 @@ class Heartbeat:
             self._thread = None
 
     def __call__(self):
-        self._heartbeat()
+        self._post_heartbeat()
         return HeartbeatContextManager(self)
-
-
-class HeartbeatModelMixin:
-
-    def __init__(self, *args, **kwargs):
-        self.__dict__['heartbeat'] = Heartbeat(self)
-        super().__init__(*args, **kwargs)

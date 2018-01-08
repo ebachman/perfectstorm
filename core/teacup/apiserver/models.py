@@ -29,9 +29,9 @@
 
 import functools
 import re
+import time
 from datetime import datetime, timedelta
 
-import mongoengine
 from mongoengine import (
     DateTimeField,
     Document,
@@ -47,9 +47,6 @@ from mongoengine import (
 )
 
 from mongoengine.fields import BaseField
-
-
-HEARTBEAT_DURATION = timedelta(seconds=60)
 
 
 def _escape_char(matchobj, chr=chr, ord=ord):
@@ -103,6 +100,19 @@ def unescape_keys(obj):
     return _replace_keys(obj, _unescape_key)
 
 
+_cleanup_interval = 1
+_cleanup_timestamp = 0
+
+
+def cleanup_expired_agents():
+    global _cleanup_timestamp
+    now = time.time()
+    if now - _cleanup_timestamp < _cleanup_interval:
+        return
+    Agent.objects.expired().delete()
+    _cleanup_timestamp = time.time()
+
+
 class EscapedDynamicField(BaseField):
     r"""
     A DynamicField-like field that allows any kind of keys in dictionaries.
@@ -148,32 +158,42 @@ class TypeMixin:
     }
 
 
-class HeartbeatQuerySet(QuerySet):
+class AgentQuerySet(QuerySet):
 
-    def stale(self):
-        threshold = datetime.now() - HEARTBEAT_DURATION
+    def expired(self):
+        threshold = datetime.now() - Agent.HEARTBEAT_DURATION
         return self.filter(heartbeat__lt=threshold)
 
+    def delete(self, *args, **kwargs):
+        queryset = self.clone()
+        agent_ids = [agent.pk for agent in queryset]
 
-class HeartbeatMixin:
+        owned_resources = Resource.objects.filter(owner__in=agent_ids)
+        owned_resources.delete()
+
+        owned_triggers = Trigger.objects.filter(owner__in=agent_ids)
+        owned_triggers.filter(status='running').update(status='pending')
+        owned_triggers.update(owner=None)
+
+        super().delete(*args, **kwargs)
+
+
+class Agent(TypeMixin, Document):
+
+    HEARTBEAT_DURATION = timedelta(seconds=60)
 
     heartbeat = DateTimeField(default=datetime.now, required=True)
 
     meta = {
-        'queryset_class': HeartbeatQuerySet,
+        'queryset_class': AgentQuerySet,
         'indexes': ['heartbeat'],
     }
-
-
-class Agent(TypeMixin, HeartbeatMixin, Document):
-
-    pass
 
 
 class Resource(TypeMixin, Document):
 
     names = ListField(StringField(min_length=1), min_length=1, required=True)
-    owner = ReferenceField(Agent, reverse_delete_rule=mongoengine.CASCADE, required=True)
+    owner = ReferenceField(Agent, required=True)
 
     host = StringField(min_length=1, null=True)
     image = StringField(min_length=1, null=True)
@@ -292,13 +312,7 @@ class Application(NameMixin, Document):
     expose = EmbeddedDocumentListField(ServiceReference)
 
 
-class TriggerQuerySet(HeartbeatQuerySet):
-
-    def stale(self):
-        return super().stale().filter(status='pending')
-
-
-class Trigger(TypeMixin, HeartbeatMixin, Document):
+class Trigger(TypeMixin, Document):
 
     STATUS_CHOICES = (
         ('pending', 'Pending'),
@@ -316,8 +330,10 @@ class Trigger(TypeMixin, HeartbeatMixin, Document):
     created = DateTimeField(default=datetime.now, required=True)
 
     meta = {
-        'queryset_class': TriggerQuerySet,
-        'indexes': ['created'],
+        'indexes': [
+            'created',
+            'owner',
+        ],
         'ordering': ['created'],
     }
 

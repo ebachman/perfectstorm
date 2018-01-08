@@ -87,10 +87,6 @@ def parse_args():
         help='MongoDB address. If port is not specified, the default port 27017 is used. Default: 127.0.0.1')
 
     parser.add_argument(
-        '--no-tasks', action='store_false', dest='run_tasks',
-        help='Disable running of background tasks')
-
-    parser.add_argument(
         '-D', '--debug', action='store_true',
         help='Enable debug mode')
 
@@ -132,7 +128,6 @@ def run():
 
     setup_logging()
 
-    from teacup.apiserver import tasks
     from teacup.wsgi import application
 
     container = tornado.wsgi.WSGIContainer(application)
@@ -154,15 +149,11 @@ def run():
 
         print('Listening on http://{}:{}/'.format(host, port), file=sys.stderr, flush=True)
 
-    if options.run_tasks:
-        tasks.run_tasks()
-
     try:
         http_server.start(0)
     except KeyboardInterrupt:
         # This code is executed in the main process.
         http_server.stop()
-        tasks.stop_tasks()
     else:
         # This code is executed in the forked sub-processes.
         ioloop = tornado.ioloop.IOLoop.current()

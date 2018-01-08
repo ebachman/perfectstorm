@@ -200,7 +200,7 @@ class TriggerSerializer(DocumentSerializer):
 
     class Meta:
         model = Trigger
-        fields = ('id', 'type', 'status', 'arguments', 'result', 'created', 'heartbeat')
+        fields = ('id', 'type', 'status', 'arguments', 'result', 'created')
 
 
 class TriggerHandleSerializer(Serializer):

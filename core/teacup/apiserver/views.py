@@ -46,6 +46,7 @@ from teacup.apiserver.models import (
     Recipe,
     Resource,
     Trigger,
+    cleanup_expired_agents,
 )
 
 from teacup.apiserver.serializers import (
@@ -110,25 +111,29 @@ class QueryFilterMixin:
         return queryset
 
 
-class HeartbeatMixin:
+class CleanupAgentsMixin:
 
-    @detail_route(methods=['POST'])
-    def heartbeat(self, request, **kwargs):
-        obj = self.get_object()
-        obj.heartbeat = datetime.now()
-        obj.save()
-        return Response(status=status.HTTP_204_NO_CONTENT)
+    def dispatch(self, *args, **kwargs):
+        cleanup_expired_agents()
+        return super().dispatch(*args, **kwargs)
 
 
-class AgentViewSet(QueryFilterMixin, HeartbeatMixin, ModelViewSet):
+class AgentViewSet(CleanupAgentsMixin, QueryFilterMixin, ModelViewSet):
 
     queryset = Agent.objects.all()
     serializer_class = AgentSerializer
 
     lookup_field = 'id'
 
+    @detail_route(methods=['POST'])
+    def heartbeat(self, request, **kwargs):
+        agent = self.get_object()
+        agent.heartbeat = datetime.now()
+        agent.save()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
-class ResourceViewSet(QueryFilterMixin, ModelViewSet):
+
+class ResourceViewSet(CleanupAgentsMixin, QueryFilterMixin, ModelViewSet):
 
     queryset = Resource.objects.all()
     serializer_class = ResourceSerializer
@@ -145,6 +150,8 @@ class GroupViewSet(QueryFilterMixin, ModelViewSet):
 
     @detail_route(methods=['GET', 'POST'])
     def members(self, request, name=None):
+        cleanup_expired_agents()
+
         group = self.get_object()
 
         if request.method == 'GET':
@@ -189,7 +196,7 @@ class RecipeViewSet(QueryFilterMixin, ModelViewSet):
     lookup_field = 'name'
 
 
-class TriggerViewSet(QueryFilterMixin, HeartbeatMixin, ModelViewSet):
+class TriggerViewSet(CleanupAgentsMixin, QueryFilterMixin, ModelViewSet):
 
     queryset = Trigger.objects.all()
     serializer_class = TriggerSerializer
