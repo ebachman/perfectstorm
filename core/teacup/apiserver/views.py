@@ -37,6 +37,9 @@ from rest_framework.decorators import detail_route
 from rest_framework.exceptions import APIException
 from rest_framework.response import Response
 
+from mongoengine.queryset import Q
+
+from rest_framework_mongoengine.generics import get_object_or_404
 from rest_framework_mongoengine.viewsets import ModelViewSet
 
 from teacup.apiserver.models import (
@@ -111,6 +114,23 @@ class QueryFilterMixin:
         return queryset
 
 
+class MultiLookupMixin:
+    """Mixin that allows looking up objects using more than one field."""
+
+    lookup_url_kwarg = 'id'
+
+    def get_object(self):
+        queryset = self.filter_queryset(self.get_queryset())
+
+        filter_query = Q()
+        value = self.kwargs[self.lookup_url_kwarg]
+
+        for field in self.lookup_fields:
+            filter_query |= Q(**{field: value})
+
+        return get_object_or_404(queryset, filter_query)
+
+
 class CleanupAgentsMixin:
 
     def dispatch(self, *args, **kwargs):
@@ -133,23 +153,23 @@ class AgentViewSet(CleanupAgentsMixin, QueryFilterMixin, ModelViewSet):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-class ResourceViewSet(CleanupAgentsMixin, QueryFilterMixin, ModelViewSet):
+class ResourceViewSet(CleanupAgentsMixin, MultiLookupMixin, QueryFilterMixin, ModelViewSet):
 
     queryset = Resource.objects.all()
     serializer_class = ResourceSerializer
 
-    lookup_field = 'names'
+    lookup_fields = ('id', 'names')
 
 
-class GroupViewSet(QueryFilterMixin, ModelViewSet):
+class GroupViewSet(MultiLookupMixin, QueryFilterMixin, ModelViewSet):
 
     queryset = Group.objects.all()
     serializer_class = GroupSerializer
 
-    lookup_field = 'name'
+    lookup_fields = ('id', 'name')
 
     @detail_route(methods=['GET', 'POST'])
-    def members(self, request, name=None):
+    def members(self, request, id=None):
         cleanup_expired_agents()
 
         group = self.get_object()
@@ -180,20 +200,20 @@ class GroupViewSet(QueryFilterMixin, ModelViewSet):
         raise AssertionError('Unsupported method: %s' % request.method)
 
 
-class ApplicationViewSet(QueryFilterMixin, ModelViewSet):
+class ApplicationViewSet(MultiLookupMixin, QueryFilterMixin, ModelViewSet):
 
     queryset = Application.objects.all()
     serializer_class = ApplicationSerializer
 
-    lookup_field = 'name'
+    lookup_fields = ('id', 'name')
 
 
-class RecipeViewSet(QueryFilterMixin, ModelViewSet):
+class RecipeViewSet(MultiLookupMixin, QueryFilterMixin, ModelViewSet):
 
     queryset = Recipe.objects.all()
     serializer_class = RecipeSerializer
 
-    lookup_field = 'name'
+    lookup_fields = ('id', 'name')
 
 
 class TriggerViewSet(CleanupAgentsMixin, QueryFilterMixin, ModelViewSet):
