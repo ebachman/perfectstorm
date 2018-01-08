@@ -44,7 +44,7 @@ import os
 # Build paths inside the project like this: os.path.join(BASE_DIR, ...)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-DEBUG = True
+DEBUG = bool(os.environ.get('STORM_DEBUG'))
 
 # Secret key: this is disabled as we are not using any feature requiring
 # cryptographic signing.

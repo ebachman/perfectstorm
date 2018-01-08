@@ -83,6 +83,10 @@ def parse_args():
         '--no-tasks', action='store_false', dest='run_tasks',
         help='Disable running of background tasks')
 
+    parser.add_argument(
+        '-D', '--debug', action='store_true',
+        help='Enable debug mode')
+
     options = parser.parse_args()
 
     if not options.bind:
@@ -111,6 +115,7 @@ def run():
     options = parse_args()
 
     os.environ['DJANGO_SETTINGS_MODULE'] = 'teacup.settings'
+    os.environ['STORM_DEBUG'] = '1' if options.debug else ''
     os.environ['STORM_MONGODB'] = 'mongodb://{}:{}/perfectstorm'.format(*options.mongo)
 
     setup_logging()
