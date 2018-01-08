@@ -56,17 +56,13 @@ def parse_args():
     parser.add_argument(
         '-B', '--bootstrap', action='store_true',
         help='Perform initial bootstrapping and update resource. More specifically, with this option the database is '
-             'created or updated (unless --no-migrations is specified) and documentation is built (unless --no-docs '
-             'is specified)')
+             'created or updated (unless --no-migrations is specified)')
     parser.add_argument(
         '--bootstrap-only', action='store_true',
         help='Bootstrap only, do not start the web server. This implies --bootstrap')
     parser.add_argument(
         '--no-migrations', action='store_false', dest='run_migrations',
         help='Do not run database migrations during bootstrapping')
-    parser.add_argument(
-        '--no-docs', action='store_false', dest='run_build_docs',
-        help='Do not build documentation during bootstrapping')
 
     options = parser.parse_args()
 
@@ -105,9 +101,6 @@ def run():
     if options.bootstrap or options.bootstrap_only:
         if options.run_migrations:
             run_subprocess(['django-admin', 'migrate'], 'running migrations')
-
-        if options.run_build_docs:
-            run_subprocess(['django-admin', 'builddocs'], 'building docs')
 
         print('Bootstrap completed', file=sys.stderr)
 

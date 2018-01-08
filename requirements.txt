@@ -1,11 +1,12 @@
 setuptools >= 20
 
--e ./core
-
--e ./lib
-
 -e ./cli
+-e ./core
+-e ./lib
 
 -e ./executors/consul
 -e ./executors/docker
 -e ./executors/loadbalancer
+
+# requirements for docs
+sphinx >= 1.6, < 1.7

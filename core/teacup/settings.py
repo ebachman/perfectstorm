@@ -65,7 +65,6 @@ INSTALLED_APPS = [
     'rest_framework',
     'rest_framework_mongoengine',
     'teacup.apiserver.apps.ApiServerConfig',
-    'teacup.docs.apps.DocsConfig',
     'teacup.ui.apps.UIConfig',
 ]
 

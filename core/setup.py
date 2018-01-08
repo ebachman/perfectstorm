@@ -33,12 +33,6 @@ setup(
     name='perfectstorm-core',
     version='0.1',
     packages=find_packages(),
-    package_data={
-        'teacup.docs': [
-            'source/*.rst',
-            'source/conf.py',
-        ],
-    },
     scripts=['stormd'],
     install_requires=[
         'django >= 1.11, < 1.12',
@@ -46,7 +40,6 @@ setup(
         'djangorestframework >= 3.7, < 3.8',
         'mongoengine >= 0.15, < 0.16',
         'pymongo >= 3.6, < 3.7',
-        'sphinx >= 1.6.5, < 1.7',
         'tornado >= 4.5, < 4.6',
     ],
     zip_safe=False,

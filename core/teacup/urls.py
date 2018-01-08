@@ -3,7 +3,6 @@ from django.contrib.staticfiles.urls import staticfiles_urlpatterns
 
 
 urlpatterns = [
-    url(r'^docs/', include('teacup.docs.urls')),
     url(r'^v1/', include('teacup.apiserver.urls')),
     url(r'^ui/', include('teacup.ui.urls')),
 ]
