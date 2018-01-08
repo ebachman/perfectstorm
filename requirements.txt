@@ -10,3 +10,6 @@ setuptools >= 20
 
 # requirements for docs
 sphinx >= 1.6, < 1.7
+
+# requirements for scripts/lint
+pyflakes

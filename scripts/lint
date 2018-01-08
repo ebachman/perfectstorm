@@ -1,0 +1,10 @@
+#!/bin/sh
+
+set -e
+
+pyflakes \
+    cli \
+    core \
+    docs \
+    executors \
+    lib
