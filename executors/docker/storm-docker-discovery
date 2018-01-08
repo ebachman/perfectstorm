@@ -32,7 +32,7 @@ import collections
 import requests_unixsocket
 
 from perfectstorm import Resource
-from perfectstorm.clients import APIClient
+from perfectstorm.cli import DaemonClient, ExecutorClient
 from perfectstorm.executors import DiscoveryExecutor
 
 
@@ -115,19 +115,19 @@ class DockerDiscoveryExecutor(DiscoveryExecutor):
         # Return differences
         return created, updated, deleted
 
-    def create_resource(self, resource):
-        self.save_resource(resource)
+    def create_resource(self, resource_data):
+        self.save_resource(resource_data)
 
-    def update_resource(self, resource):
-        self.save_resource(resource)
+    def update_resource(self, resource_data):
+        self.save_resource(resource_data)
 
-    def save_resource(self, resource):
-        resource_type, data = resource
+    def save_resource(self, resource_data):
+        resource_type, resource_data = resource_data
 
         if resource_type == 'info':
-            self.save_docker_info(data)
+            self.save_docker_info(resource_data)
         elif resource_type == 'container':
-            self.save_container(data)
+            self.save_container(resource_data)
         else:
             raise AssertionError(resource_type)
 
@@ -158,18 +158,16 @@ class DockerDiscoveryExecutor(DiscoveryExecutor):
 
         resource.save()
 
-    def delete_resource(self, resource):
-        resource_type, data = resource
+    def delete_resource(self, resource_data):
+        resource_type, resource_data = resource_data
         assert resource_type == 'container'
-        Resource(names=data['Id']).delete()
+        Resource(names=resource_data['Id']).delete()
 
 
-class DockerDiscoveryClient(APIClient):
+class DockerDiscoveryClient(DaemonClient, ExecutorClient):
 
-    def run(self):
-        executor = DockerDiscoveryExecutor()
-        executor.run()
+    executor_class = DockerDiscoveryExecutor
 
 
 if __name__ == '__main__':
-    DockerDiscoveryClient().main()
+    DockerDiscoveryClient.main()

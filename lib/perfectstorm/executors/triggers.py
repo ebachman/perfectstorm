@@ -50,37 +50,38 @@ class TriggerExecutor(AgentExecutor, PollingExecutor):
             self.trigger = pending_triggers[0]
             return True
 
-    def cycle(self):
-        with self.trigger.handle(self.agent):
+    def run_inner(self):
+        trigger = self.trigger
+        with trigger.handle(self.agent):
             try:
-                result = self.handle_trigger()
+                result = self.run_trigger(self.trigger)
             except Exception as exc:
-                self.trigger_error(exc)
+                self.trigger_error(trigger, exc)
+                raise
             else:
-                self.trigger_done(result)
+                self.trigger_done(trigger, result)
 
     @abc.abstractmethod
-    def handle_trigger(self):
+    def run_trigger(self, trigger):
         raise NotImplementedError
 
-    def trigger_done(self, result):
+    def trigger_done(self, trigger, result):
         self.trigger.complete(result)
 
-    def trigger_error(self, exc):
+    def trigger_error(self, trigger, exc):
         self.trigger.fail(exc)
-        self.error(exc)
 
 
 class RecipeExecutor(TriggerExecutor):
 
     trigger_type = 'recipe'
 
-    def handle_trigger(self):
-        recipe = self.get_recipe()
-        self.run_recipe(recipe)
+    def run_trigger(self, trigger):
+        self.recipe = self.get_recipe(trigger)
+        self.run_recipe(self.recipe)
 
-    def get_recipe(self):
-        arguments = self.trigger.arguments
+    def get_recipe(self, trigger):
+        arguments = trigger.arguments
 
         recipe_name = arguments['recipe']
         recipe = Recipe.objects.get(name=recipe_name)
@@ -94,5 +95,5 @@ class RecipeExecutor(TriggerExecutor):
         return recipe
 
     @abc.abstractmethod
-    def run_recipe(self):
+    def run_recipe(self, recipe):
         raise NotImplementedError

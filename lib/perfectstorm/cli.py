@@ -36,32 +36,43 @@ import traceback
 from . import api
 
 
-class BaseClient(metaclass=abc.ABCMeta):
+class CommandLineClient(metaclass=abc.ABCMeta):
 
-    exit_on_error = False
+    def __init__(self, args=None):
+        self.args = args if args is not None else sys.argv[1:]
 
-    def main(self, args=None):
-        self.setup(args)
-
+    @classmethod
+    def main(cls, *args, **kwargs):
+        self = cls(*args, **kwargs)
+        self.setup()
         try:
-            while True:
-                try:
-                    self.run()
-                except Exception as exc:
-                    self.error(exc)
+            self.run()
         except KeyboardInterrupt:
             pass
+        except Exception as exc:
+            self.on_error(exc)
+            sys.exit(1)
         finally:
             self.teardown()
+        sys.exit()
 
-        sys.exit(0)
+    def setup(self):
+        self.parse_arguments()
+        self.connect_api()
 
-    def setup(self, args=None):
-        self.parse_arguments(args)
+    def teardown(self):
+        pass
 
-    def parse_arguments(self, args=None):
+    @abc.abstractmethod
+    def run(self):
+        raise NotImplementedError
+
+    def on_error(self, exc):
+        traceback.print_exception(type(exc), exc, exc.__traceback__)
+
+    def parse_arguments(self):
         parser = self.get_argument_parser()
-        self.options = parser.parse_args(args)
+        self.options = parser.parse_args(self.args)
 
     def get_argument_parser(self):
         parser = argparse.ArgumentParser()
@@ -69,38 +80,47 @@ class BaseClient(metaclass=abc.ABCMeta):
         return parser
 
     def add_arguments(self, parser):
-        pass
-
-    @abc.abstractmethod
-    def run(self):
-        raise NotImplementedError
-
-    def teardown(self):
-        pass
-
-    def error(self, exc):
-        traceback.print_exception(type(exc), exc, exc.__traceback__)
-        if self.exit_on_error:
-            sys.exit(1)
-        else:
-            time.sleep(1)
-
-
-class APIClient(BaseClient):
-
-    def setup(self, *args, **kwargs):
-        super().setup(*args, **kwargs)
-        self.connect_api()
-
-    def add_arguments(self, parser):
-        super().add_arguments(parser)
-
         default_addr = '%s:%d' % (api.DEFAULT_HOST, api.DEFAULT_PORT)
         parser.add_argument(
-            '-S', '--apiserver', metavar='HOST[:PORT]', default=default_addr,
+            '-C', '--connect', metavar='HOST[:PORT]', default=default_addr,
             help='Address to the Perfect Storm API server (default: {})'.format(default_addr))
 
     def connect_api(self):
-        host, port = self.options.apiserver.rsplit(':', 1)
+        host, port = self.options.connect.rsplit(':', 1)
         port = int(port)
         api.connect(host, port)
+
+
+class DaemonClient(CommandLineClient):
+
+    restart_interval = 1
+
+    @classmethod
+    def main(cls, *args, **kwargs):
+        self = cls(**kwargs)
+        self.setup()
+        try:
+            while True:
+                try:
+                    self.run()
+                except Exception as exc:
+                    self.on_error(exc)
+                time.sleep(self.restart_interval)
+        except KeyboardInterrupt:
+            pass
+        finally:
+            self.teardown()
+        sys.exit()
+
+
+class ExecutorClient(CommandLineClient):
+
+    def get_executor(self):
+        executor_class = getattr(self, 'executor_class', None)
+        if executor_class is None:
+            raise NotImplementedError('Subclasses must set executor_class or override get_executor()')
+        return executor_class()
+
+    def run(self):
+        executor = self.get_executor()
+        executor.run()

@@ -33,36 +33,49 @@ import time
 from ..entities import Agent
 
 
-class BaseExecutor(metaclass=abc.ABCMeta):
+class Executor(metaclass=abc.ABCMeta):
+
+    def run(self):
+        self.before_run()
+        try:
+            self.run_inner()
+        finally:
+            self.after_run()
 
     def before_run(self):
         pass
 
-    def run(self):
-        self.before_run()
-
-        try:
-            self.run_inner()
-        except Exception as exc:
-            self.run_error(exc)
-        finally:
-            self.after_run()
-
     @abc.abstractmethod
     def run_inner(self):
-        pass
+        raise NotImplementedError
 
     def after_run(self):
         pass
 
-    def run_error(self, exc):
-        self.error(exc)
 
-    def error(self, exc):
-        raise exc
+class PollingExecutor(Executor):
+
+    poll_interval = 1
+
+    def run(self):
+        self.before_run()
+        try:
+            while True:
+                self.wait()
+                self.run_inner()
+        finally:
+            self.after_run()
+
+    def wait(self):
+        while not self.poll():
+            time.sleep(self.poll_interval)
+
+    @abc.abstractmethod
+    def poll(self):
+        raise NotImplementedError
 
 
-class AgentExecutor(BaseExecutor):
+class AgentExecutor(Executor):
 
     @property
     @abc.abstractmethod
@@ -82,51 +95,3 @@ class AgentExecutor(BaseExecutor):
         super().after_run()
         self.agent.heartbeat.stop()
         self.agent.delete()
-
-
-class LoopExecutor(BaseExecutor):
-
-    def run_inner(self):
-        while True:
-            try:
-                self.wait()
-            except Exception as exc:
-                self.wait_error(exc)
-            try:
-                self.cycle()
-            except Exception as exc:
-                self.cycle_error(exc)
-
-    @abc.abstractmethod
-    def wait(self):
-        raise NotImplementedError
-
-    def wait_error(self, exc):
-        self.error(exc)
-
-    @abc.abstractmethod
-    def cycle(self):
-        raise NotImplementedError
-
-    def cycle_error(self, exc):
-        self.error(exc)
-
-
-class PollingExecutor(LoopExecutor):
-
-    poll_interval = 1
-
-    def wait(self):
-        while not self.poll():
-            self.sleep()
-
-    def sleep(self):
-        time.sleep(self.poll_interval)
-
-    @abc.abstractmethod
-    def poll(self):
-        raise NotImplementedError
-
-    def wait_error(self, exc):
-        super().wait_error(exc)
-        self.sleep()

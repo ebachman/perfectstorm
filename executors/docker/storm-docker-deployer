@@ -34,7 +34,7 @@ import subprocess
 
 import yaml
 
-from perfectstorm.clients import APIClient
+from perfectstorm.cli import DaemonClient, ExecutorClient
 from perfectstorm.executors import RecipeExecutor
 
 
@@ -137,8 +137,8 @@ class DockerRecipeExecutor(RecipeExecutor):
         qs.filter(target=self.docker_id)
         return qs
 
-    def get_recipe(self):
-        recipe = super().get_recipe()
+    def get_recipe(self, trigger):
+        recipe = super().get_recipe(trigger)
         commands = yaml.safe_load(recipe.content)
         if not isinstance(commands, list):
             raise TypeError('Recipe content is expected to be a list of commands')
@@ -151,12 +151,10 @@ class DockerRecipeExecutor(RecipeExecutor):
             command.run(environ)
 
 
-class DockerDeployerClient(APIClient):
+class DockerDeployerClient(DaemonClient, ExecutorClient):
 
-    def run(self):
-        executor = DockerRecipeExecutor()
-        executor.run()
+    executor_class = DockerRecipeExecutor
 
 
 if __name__ == '__main__':
-    DockerDeployerClient().main()
+    DockerDeployerClient.main()

@@ -29,7 +29,7 @@
 import abc
 import collections
 
-from .api import AgentExecutor, PollingExecutor
+from .base import AgentExecutor, PollingExecutor
 
 
 SnapshotDiff = collections.namedtuple('SnapshotDiff', 'created updated deleted')
@@ -55,15 +55,15 @@ class DiscoveryExecutor(AgentExecutor, PollingExecutor):
 
         return any(self.snapshot_diff)
 
-    def cycle(self):
-        for resource in self.snapshot_diff.created:
-            self.create_resource(resource)
+    def run_inner(self):
+        for resource_data in self.snapshot_diff.created:
+            self.create_resource(resource_data)
 
-        for resource in self.snapshot_diff.updated:
-            self.update_resource(resource)
+        for resource_data in self.snapshot_diff.updated:
+            self.update_resource(resource_data)
 
-        for resource in self.snapshot_diff.deleted:
-            self.delete_resource(resource)
+        for resource_data in self.snapshot_diff.deleted:
+            self.delete_resource(resource_data)
 
     @abc.abstractmethod
     def take_current_snapshot(self):
@@ -78,13 +78,13 @@ class DiscoveryExecutor(AgentExecutor, PollingExecutor):
         raise NotImplementedError
 
     @abc.abstractmethod
-    def create_resource(self, resource):
+    def create_resource(self, resource_data):
         raise NotImplementedError
 
     @abc.abstractmethod
-    def update_resource(self, resource):
+    def update_resource(self, resource_data):
         raise NotImplementedError
 
     @abc.abstractmethod
-    def delete_resource(self, resource):
+    def delete_resource(self, resource_data):
         raise NotImplementedError
