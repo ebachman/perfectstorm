@@ -61,6 +61,13 @@ def address(addr):
     return host, port
 
 
+def parse_env_var(type, envvar, default):
+    if os.environ.get(envvar):
+        return type(os.environ[envvar])
+    else:
+        return default
+
+
 def parse_args():
     parser = argparse.ArgumentParser(
         usage='%(prog)s [OPTIONS]',
@@ -76,7 +83,7 @@ def parse_args():
         '-p', '--port', metavar='PORT', type=int, default=8000, dest='default_port',
         help='Port to bind. See also -b/--bind. Default: 8000')
     parser.add_argument(
-        '--mongo', metavar='HOST[:PORT]', type=address, default=('127.0.0.1', 27017),
+        '--mongo', metavar='HOST[:PORT]', type=address, default=None,
         help='MongoDB address. If port is not specified, the default port 27017 is used. Default: 127.0.0.1')
 
     parser.add_argument(
@@ -89,10 +96,15 @@ def parse_args():
 
     options = parser.parse_args()
 
-    if not options.bind:
-        options.bind.append(('127.0.0.1', None))
+    if not options.debug:
+        options.debug = parse_env_var(bool, 'STORM_DEBUG', False)
 
-    if options.mongo[1] is None:
+    if not options.bind:
+        options.bind.append(parse_env_var(address, 'STORM_BIND', ('127.0.0.1', None)))
+
+    if not options.mongo:
+        options.mongo = parse_env_var(address, 'STORM_MONGO', ('127.0.0.1', None))
+    if not options.mongo[1]:
         options.mongo = (options.mongo[0], 27017)
 
     return options
