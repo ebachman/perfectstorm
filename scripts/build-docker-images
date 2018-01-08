@@ -1,0 +1,29 @@
+#!/bin/bash
+
+set -euo pipefail
+
+SCRIPT_PATH=$(dirname "$(readlink -f "$0")")
+PROJECT_PATH=$(dirname "$SCRIPT_PATH")
+
+REPO=${REPOPREFIX:-}perfectstorm
+VERSIONS=(latest 0.1)
+IMAGES=(
+    # "NAME SUBPATH"
+    "perfectstorm-lib lib"
+    "perfectstorm ."
+    "perfectstorm-docker executors/docker"
+)
+
+for BUILD_IMAGE in "${IMAGES[@]}"
+do
+    BUILD_IMAGE=($BUILD_IMAGE)
+    NAME="${BUILD_IMAGE[0]}"
+    SUBPATH="${BUILD_IMAGE[1]}"
+
+    for VERSION in "${VERSIONS[@]}"
+    do
+        TAG="$REPO/$NAME:$VERSION"
+        echo "Building $(tput bold)$TAG$(tput sgr0)"
+        ( cd "$PROJECT_PATH/$SUBPATH" && docker build -t "$TAG" . )
+    done
+done

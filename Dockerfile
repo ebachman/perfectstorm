@@ -1,9 +1,7 @@
-FROM python:3.6
+FROM perfectstorm/perfectstorm-lib:latest
 
 ENV PYTHONUNBUFFERED 1
-ENV DJANGO_SETTINGS_MODULE teacup.settings
-
-WORKDIR /usr/src/perfectstorm/
+ENV STORM_BIND 0.0.0.0
 
 ENTRYPOINT ["/docker-entrypoint.sh"]
 
@@ -13,14 +11,6 @@ COPY docker-entrypoint.sh /
 
 COPY cli /usr/src/perfectstorm/cli
 COPY core /usr/src/perfectstorm/core
-COPY executors /usr/src/perfectstorm/executors
-COPY lib /usr/src/perfectstorm/lib
 
-RUN ["pip", "install", "/usr/src/perfectstorm/core"]
-RUN ["pip", "install", "/usr/src/perfectstorm/lib"]
 RUN ["pip", "install", "/usr/src/perfectstorm/cli"]
-RUN ["pip", "install", "/usr/src/perfectstorm/executors/consul"]
-RUN ["pip", "install", "/usr/src/perfectstorm/executors/docker"]
-RUN ["pip", "install", "/usr/src/perfectstorm/executors/loadbalancer"]
-
-RUN ["stormd", "--bootstrap-only"]
+RUN ["pip", "install", "/usr/src/perfectstorm/core"]
