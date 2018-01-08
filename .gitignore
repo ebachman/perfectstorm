@@ -1,4 +1,3 @@
 *.egg-info/
 __pycache__/
-core/teacup/db.sqlite3
 env/

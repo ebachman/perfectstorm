@@ -4,7 +4,6 @@ import argparse
 import logging
 import os
 import socket
-import subprocess
 import sys
 
 import tornado.httpserver
@@ -53,31 +52,12 @@ def parse_args():
         '--no-tasks', action='store_false', dest='run_tasks',
         help='Disable running of background tasks')
 
-    parser.add_argument(
-        '-B', '--bootstrap', action='store_true',
-        help='Perform initial bootstrapping and update resource. More specifically, with this option the database is '
-             'created or updated (unless --no-migrations is specified)')
-    parser.add_argument(
-        '--bootstrap-only', action='store_true',
-        help='Bootstrap only, do not start the web server. This implies --bootstrap')
-    parser.add_argument(
-        '--no-migrations', action='store_false', dest='run_migrations',
-        help='Do not run database migrations during bootstrapping')
-
     options = parser.parse_args()
 
     if not options.bind:
         options.bind.append(('127.0.0.1', None))
 
     return options
-
-
-def run_subprocess(args, phase):
-    proc = subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-    if proc.returncode != 0:
-        print('Error {}:'.format(phase), file=sys.stderr, flush=True)
-        sys.stderr.buffer.write(proc.stdout)
-        sys.exit(1)
 
 
 def setup_logging():
@@ -97,15 +77,6 @@ def run():
     options = parse_args()
 
     os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'teacup.settings')
-
-    if options.bootstrap or options.bootstrap_only:
-        if options.run_migrations:
-            run_subprocess(['django-admin', 'migrate'], 'running migrations')
-
-        print('Bootstrap completed', file=sys.stderr)
-
-        if options.bootstrap_only:
-            return
 
     setup_logging()
 
