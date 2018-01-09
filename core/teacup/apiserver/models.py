@@ -207,6 +207,9 @@ class Agent(TypeMixin, Document):
         super().delete()
         cleanup_owned_documents([self.pk])
 
+    def __str__(self):
+        return str(self.pk)
+
 
 class Resource(TypeMixin, Document):
 
@@ -244,7 +247,7 @@ class Service(NameMixin, EmbeddedDocument):
         return ServiceReference(group=self._instance, service_name=self.name)
 
     def __str__(self):
-        return f'{self._instance}[{self.name}]'
+        return '{}[{}]'.format(self._instance, self.name)
 
 
 class Group(NameMixin, Document):
@@ -358,6 +361,9 @@ class Trigger(TypeMixin, Document):
         ],
         'ordering': ['created'],
     }
+
+    def __str__(self):
+        return str(self.pk)
 
 
 class Recipe(NameMixin, TypeMixin, Document):
