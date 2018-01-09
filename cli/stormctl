@@ -1,1121 +1,407 @@
 #!/usr/bin/env python3
+# Copyright (c) 2018, Andrea Corbellini
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+#
+# 1. Redistributions of source code must retain the above copyright notice, this
+#    list of conditions and the following disclaimer.
+#
+# 2. Redistributions in binary form must reproduce the above copyright notice,
+#    this list of conditions and the following disclaimer in the documentation
+#    and/or other materials provided with the distribution.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+#
+# The views and conclusions contained in the software and documentation are those
+# of the authors and should not be interpreted as representing official policies,
+# either expressed or implied, of the Perfect Storm Project.
 
+import abc
 import argparse
 import functools
-import json
-import logging
 import re
-import subprocess
 import sys
-import tempfile
-import textwrap
-import time
-import traceback
 
 import yaml
-from yaml.scanner import ScannerError
 
-from jsonmodels import models, fields
-from jsonmodels.errors import ValidationError
+from perfectstorm import Agent, Application, Group, Recipe, Resource
+from perfectstorm.cli import CommandLineClient
 
-import simple_rest_client.api
-from simple_rest_client.exceptions import ClientError, ClientConnectionError
 
+def get_object_id(obj):
+    return str(obj.id)
 
-DEFAULT_SERVER = 'http://127.0.0.1:8000/'
 
-# Disable logging to suppress useless output simple_rest_client.
-logging.disable(logging.ERROR)
+def get_object_type(obj):
+    return str(obj.type)
 
 
-#
-# YAML and JSON
-#
-
-def dump_yaml(obj):
-    return yaml.dump(obj, default_flow_style=False)
-
-
-def dump_json(obj):
-    return json.dumps(obj, indent=2)
-
-
-def represent_model(dumper, data):
-    return dumper.represent_dict(data.to_struct())
-
-
-def represent_block_literal(dumper, data):
-    scalar = dumper.represent_str(data)
-    if '\n' in data:
-        scalar.style = '|'
-    return scalar
-
-
-yaml.add_multi_representer(models.Base, represent_model)
-yaml.add_representer(str, represent_block_literal)
-
-
-#
-# Models
-#
-
-class DictField(fields.BaseField):
-
-    types = (dict,)
-
-
-class BaseResourceModel(models.Base):
-
-    @property
-    def resource_name(self):
-        raise NotImplementedError
-
-    @property
-    def object_id(self):
-        raise NotImplementedError
-
-    def to_api_model(self):
-        raise NotImplementedError
-
-    def to_user_model(self):
-        raise NotImplementedError
-
-
-class UserResourceModel(BaseResourceModel):
-
-    def to_user_model(self):
-        return self
-
-
-class APIResourceModel(BaseResourceModel):
-
-    def to_api_model(self):
-        return self
-
-
-class ServiceModel(UserResourceModel, APIResourceModel):
-
-    name = fields.StringField(required=True)
-    protocol = fields.StringField(required=True)
-    port = fields.IntField(required=True)
-
-
-class GroupModel(UserResourceModel, APIResourceModel):
-
-    resource_name = 'groups'
-
-    name = fields.StringField(required=True)
-
-    query = DictField()
-    include = fields.ListField(str)
-    exclude = fields.ListField(str)
-
-    services = fields.ListField([ServiceModel])
-
-    @property
-    def object_id(self):
-        return self.name
-
-
-class RegexField(fields.BaseField):
-
-    types = (dict,)
-
-    def to_struct(self, value):
-        return self.format_string.format(**value)
-
-    def parse_value(self, value):
-        match = self.regex.match(value)
-        if match is None:
-            raise ValidationError('Component links must be in the format {!r}'.format(self.readable_format))
-        return match.groupdict()
-
-
-class ArrayField(fields.BaseField):
-
-    types = (list,)
-
-    def __init__(self, field, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.field = field
-
-    def get_default_value(self):
-        return []
-
-    def parse_value(self, value):
-        return [self.field.parse_value(item) for item in value]
-
-    def to_struct(self, value):
-        return [self.field.to_struct(item) for item in value]
-
-    def validate(self, value):
-        super().validate(value)
-        for item in value:
-            self.field.validate(item)
-
-
-class UserApplicationComponentField(RegexField):
-
-    readable_format = 'source => destination[service]'
-    format_string = '{src_component} => {dest_component}[{dest_service}]'
-
-    regex = re.compile(
-        r'^'
-        r'\s*(?P<src_component>[-\w]+)'
-        r'\s*=>'
-        r'\s*(?P<dest_component>[-\w]+)'
-        r'\s*\[\s*(?P<dest_service>[-\w]+)\s*\]'
-        r'\s*\Z',
-        re.U)
-
-
-class UserApplicationExposeField(RegexField):
-
-    readable_format = 'component[service]'
-    format_string = '{component}[{service}]'
-
-    regex = re.compile(
-        r'^'
-        r'\s*(?P<component>[-\w]+)'
-        r'\s*\[\s*(?P<service>[-\w]+)\s*\]'
-        r'\s*\Z',
-        re.U)
-
-
-class UserApplicationModel(UserResourceModel):
-
-    resource_name = 'apps'
-
-    name = fields.StringField(required=True)
-    components = ArrayField(UserApplicationComponentField())
-    expose = ArrayField(UserApplicationExposeField())
-
-    @property
-    def object_id(self):
-        return self.name
-
-    def to_api_model(self):
-        links = self.components
-
-        components = set()
-        components.update(item['src_component'] for item in links)
-        components.update(item['dest_component'] for item in links)
-
-        return APIApplicationModel(name=self.name, components=list(components), links=links, expose=self.expose)
-
-
-class APIApplicationLinkModel(APIResourceModel):
-
-    src_component = fields.StringField(required=True)
-    dest_component = fields.StringField(required=True)
-    dest_service = fields.StringField(required=True)
-
-
-class APIApplicationExposeModel(APIResourceModel):
-
-    component = fields.StringField(required=True)
-    service = fields.StringField(required=True)
-
-
-class APIApplicationModel(APIResourceModel):
-
-    resource_name = 'apps'
-
-    name = fields.StringField(required=True)
-    components = fields.ListField(str)
-    links = fields.ListField(APIApplicationLinkModel)
-    expose = fields.ListField(APIApplicationExposeModel)
-
-    @property
-    def object_id(self):
-        return self.name
-
-    def to_user_model(self):
-        components_field = UserApplicationComponentField()
-        components = [components_field.to_struct(link.to_struct()) for link in self.links]
-
-        expose_field = UserApplicationExposeField()
-        expose = [expose_field.to_struct(service.to_struct()) for service in self.expose]
-
-        return UserApplicationModel(name=self.name, components=components, expose=expose)
-
-
-class TriggerModel(UserResourceModel, APIResourceModel):
-
-    resource_name = 'triggers'
-
-    id = fields.StringField()
-    type = fields.StringField(required=True)
-    status = fields.StringField()
-
-    arguments = DictField(required=False)
-    result = DictField(required=False)
-
-    @property
-    def object_id(self):
-        return self.id
-
-
-class RecipeModel(UserResourceModel, APIResourceModel):
-
-    resource_name = 'recipes'
-
-    name = fields.StringField(required=True)
-    type = fields.StringField(required=True)
-    content = fields.StringField()
-
-    options = DictField()
-    params = DictField()
-
-    targetNode = fields.StringField()
-    targetAnyOf = fields.StringField()
-    targetAllIn = fields.StringField()
-    addTo = fields.StringField()
-
-    @property
-    def object_id(self):
-        return self.name
-
-
-#
-# Resource clients
-#
-
-# Constants for on_error
-EXIT = 'EXIT'
-RAISE = 'RAISE'
-IGNORE = 'IGNORE'
-
-
-class BaseResourceClient:
-
-    api_resource = simple_rest_client.resource.Resource
-
-    def __init__(self, api, output):
-        self.api = getattr(api, self.resource_name)
-        self.output = output
-        self.messages = {}
-
-    @property
-    def resource_name(self):
-        raise NotImplementedError
-
-    @property
-    def verbose_name(self):
-        return self.resource_name.rstrip('s')
-
-    @property
-    def verbose_name_plural(self):
-        return self.verbose_name + 's'
-
-    @property
-    def api_model(self):
-        raise NotImplementedError
-
-    @property
-    def user_model(self):
-        raise NotImplementedError
-
-    def handle_error(self, exc, on_error=EXIT):
-        if on_error is EXIT:
-            sys.exit(1)
-        elif on_error is RAISE:
-            raise exc
-        elif on_error is IGNORE:
-            pass
-        else:
-            raise ValueError(on_error)
-
-
-class CreateResourceClient(BaseResourceClient):
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.messages.update(
-            create='%s created: {BOLD}{obj.object_id}{RESET}' % self.verbose_name.capitalize(),
-            create_error='Cannot create %s {BOLD}{obj.object_id}{RESET}: {ERROR}{reason}{RESET}' % self.verbose_name,
-        )
-
-    def create(self, obj, on_error=EXIT):
-        try:
-            new_obj = self.perform_create(obj)
-        except (ValidationError, ClientError) as exc:
-            self.handle_create_error(obj, exc, on_error)
-        else:
-            self.handle_create_success(new_obj)
-            return new_obj
-
-    def perform_create(self, obj):
-        assert isinstance(obj, UserResourceModel)
-        assert obj.resource_name == self.resource_name
-
-        obj.validate()
-        response = self.api.create(body=obj.to_api_model().to_struct())
-
-        return self.api_model(**response.body).to_user_model()
-
-    def handle_create_success(self, obj):
-        self.output.print(self.messages['create'], params={'obj': obj})
-
-    def handle_create_error(self, obj, exc, on_error=EXIT):
-        self.output.print_exception(self.messages['create_error'], params={'obj': obj}, exc=exc)
-        self.handle_error(exc, on_error)
-
-
-class ListResourceClient(BaseResourceClient):
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.messages.update(
-            list_error='Cannot list %s: {ERROR}{reason}{RESET}' % self.verbose_name_plural,
-        )
-
-    def list(self, names_only=False, on_error=EXIT):
-        try:
-            lst = self.perform_list()
-        except (ValidationError, ClientError) as exc:
-            self.handle_list_error(exc, on_error)
-        else:
-            self.handle_list_success(lst, names_only)
-
-    def perform_list(self):
-        response = self.api.list()
-        return [
-            self.api_model(**item).to_user_model()
-            for item in response.body
-        ]
-
-    def handle_list_success(self, lst, names_only=False):
-        if not names_only:
-            self.output.print_yaml(lst)
-        else:
-            for obj in lst:
-                self.output.print(obj.object_id)
-
-    def handle_list_error(self, exc, on_error=EXIT):
-        self.output.print_exception(self.messages['list_error'], params={}, exc=exc)
-        self.handle_error(exc, on_error)
-
-
-class GetResourceClient(BaseResourceClient):
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.messages.update(
-            get_error='Cannot retrieve %s {BOLD}{object_id}{RESET}: {ERROR}{reason}{RESET}' % self.verbose_name,
-        )
-
-    def get(self, object_id, on_error=EXIT):
-        try:
-            obj = self.perform_get(object_id)
-        except (ValidationError, ClientError) as exc:
-            self.handle_get_error(object_id, exc, on_error)
-        else:
-            self.handle_get_success(obj)
-
-    def perform_get(self, object_id):
-        response = self.api.retrieve(object_id)
-        return self.api_model(**response.body).to_user_model()
-
-    def handle_get_success(self, obj):
-        self.output.print_yaml(obj)
-
-    def handle_get_error(self, object_id, exc, on_error=EXIT):
-        self.output.print_exception(self.messages['get_error'], params={'object_id': object_id}, exc=exc)
-        self.handle_error(exc, on_error)
-
-
-class UpdateResourceClient(BaseResourceClient):
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.messages.update(
-            update='%s updated: {BOLD}{obj.object_id}{RESET}' % self.verbose_name.capitalize(),
-            update_error='Cannot update %s {BOLD}{obj.object_id}{RESET}: {ERROR}{reason}{RESET}' % self.verbose_name,
-        )
-
-    def update(self, obj, on_error=EXIT):
-        try:
-            new_obj = self.perform_update(obj)
-        except (ValidationError, ClientError) as exc:
-            self.handle_update_error(obj, exc, on_error)
-        else:
-            self.handle_update_success(obj)
-            return new_obj
-
-    def perform_update(self, obj):
-        assert isinstance(obj, UserResourceModel)
-        assert obj.resource_name == self.resource_name
-
-        obj.validate()
-        response = self.api.update(obj.object_id, body=obj.to_api_model().to_struct())
-
-        return self.api_model(**response.body).to_user_model()
-
-    def handle_update_success(self, obj):
-        self.output.print(self.messages['update'], params={'obj': obj})
-
-    def handle_update_error(self, obj, exc, on_error=EXIT):
-        if on_error != RAISE:
-            self.output.print_exception(self.messages['update_error'], params={'obj': obj}, exc=exc)
-        self.handle_error(exc, on_error)
-
-
-class EditResourceClient(GetResourceClient, UpdateResourceClient):
-
-    def edit(self, object_id, on_error=EXIT):
-        try:
-            obj = self.perform_get(object_id)
-        except (ValidationError, ClientError) as exc:
-            self.handle_get_error(object_id, exc, on_error)
-            return
-
-        try:
-            self.perform_edit(obj)
-        except (ScannerError, ValidationError, ClientError) as exc:
-            self.handle_update_error(obj, exc, on_error)
-            return
-
-        self.handle_update_success(obj)
-
-    def perform_edit(self, obj):
-        with tempfile.NamedTemporaryFile('w+', suffix='.yml') as fp:
-            fp.write(dump_yaml(obj))
-            fp.flush()
-
-            self.perform_edit_loop(obj, fp)
-
-    def perform_edit_loop(self, obj, fp):
-        while True:
-            try:
-                new_obj = self.run_editor(fp)
-                self.perform_update(new_obj)
-            except (ScannerError, ValidationError, ClientError) as exc:
-                self.handle_update_error(obj, exc, IGNORE)
-                self.ask_try_again(obj)
-            else:
-                return
-
-    def run_editor(self, fp):
-        subprocess.run(['sensible-editor', fp.name])
-
-        fp.seek(0)
-
-        body = yaml.safe_load(fp)
-        obj = self.user_model(**body)
-
-        return obj
-
-    def ask_try_again(self, obj):
-        while True:
-            print('\nTry again? [Y/n] ', end='', flush=True)
-            answer = sys.stdin.readline().strip().lower()
-
-            if not answer or answer.startswith('y'):
-                return
-            elif answer.startswith('n'):
-                sys.exit(1)
-
-
-class DeleteResourceClient(BaseResourceClient):
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.messages.update(
-            delete='%s deleted: {BOLD}{object_id}{RESET}' % self.verbose_name.capitalize(),
-            delete_error='Cannot delete %s {BOLD}{object_id}{RESET}: {ERROR}{reason}{RESET}' % self.verbose_name,
-        )
-
-    def delete(self, object_id, on_error=EXIT):
-        try:
-            self.perform_delete(object_id)
-        except (ValidationError, ClientError) as exc:
-            self.handle_delete_error(object_id, exc, on_error)
-        else:
-            self.handle_delete_success(object_id)
-
-    def perform_delete(self, object_id):
-        self.api.destroy(object_id)
-
-    def handle_delete_success(self, object_id):
-        self.output.print(self.messages['delete'], params={'object_id': object_id})
-
-    def handle_delete_error(self, object_id, exc, on_error=EXIT):
-        self.output.print_exception(self.messages['delete_error'], params={'object_id': object_id}, exc=exc)
-        self.handle_error(exc, on_error)
-
-
-class GroupAPIResource(simple_rest_client.resource.Resource):
-
-    @property
-    def default_actions(self):
-        actions = super().default_actions
-
-        actions.update(
-            members={'method': 'GET', 'url': self.resource_name + '/{}/members/'},
-            members_change={'method': 'POST', 'url': self.resource_name + '/{}/members/'},
-        )
-
-        return actions
-
-
-class GroupsResourceClient(
-        EditResourceClient,
-        CreateResourceClient,
-        ListResourceClient,
-        GetResourceClient,
-        UpdateResourceClient,
-        DeleteResourceClient):
-
-    resource_name = 'groups'
-
-    api_model = GroupModel
-    user_model = GroupModel
-    api_resource = GroupAPIResource
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.messages.update(
-            members_add='Added {BOLD}{count}{RESET} members to %s {BOLD}{object_id}{RESET}' % self.verbose_name,
-            members_remove='Removed {BOLD}{count}{RESET} members from %s {BOLD}{object_id}{RESET}' % self.verbose_name,
-            members_error='Cannot retrieve members for %s {BOLD}{object_id}{RESET}: {ERROR}{reason}{RESET}' % self.verbose_name,
-            members_add_error='Cannot add members to %s {BOLD}{object_id}{RESET}: {ERROR}{reason}{RESET}' % self.verbose_name,
-            members_remove_error='Cannot remove members from %s {BOLD}{object_id}{RESET}: {ERROR}{reason}{RESET}' % self.verbose_name,
-        )
-
-    def members(self, object_id, names_only=False, on_error=EXIT):
-        try:
-            lst = self.api.members(object_id).body
-        except ClientError as exc:
-            self.handle_members_error(object_id, exc, on_error)
-        else:
-            self.handle_members_success(lst, names_only)
-
-    def handle_members_error(self, object_id, exc, on_error=EXIT):
-        self.output.print_exception(self.messages['members_error'], params={'object_id': object_id}, exc=exc)
-        self.handle_error(exc, on_error)
-
-    def handle_members_success(self, lst, names_only=False):
-        if not names_only:
-            self.output.print_yaml(lst)
-        else:
-            for obj in lst:
-                self.output.print(obj['name'])
-
-    def members_add(self, object_id, members, on_error=EXIT):
-        try:
-            self.api.members_change(object_id, body={'include': members})
-        except ClientError as exc:
-            self.handle_members_add_error(object_id, exc, on_error)
-        else:
-            self.handle_members_add_success(object_id, members)
-
-    def handle_members_add_error(self, object_id, exc, on_error=EXIT):
-        self.output.print_exception(self.messages['members_add_error'], params={'object_id': object_id}, exc=exc)
-        self.handle_error(exc, on_error)
-
-    def handle_members_add_success(self, object_id, members):
-        self.output.print(self.messages['members_add'], params={'object_id': object_id, 'count': len(members)})
-
-    def members_remove(self, object_id, members, on_error=EXIT):
-        try:
-            self.api.members_change(object_id, body={'exclude': members})
-        except ClientError as exc:
-            self.handle_members_remove_error(object_id, exc, on_error)
-        else:
-            self.handle_members_remove_success(object_id, members)
-
-    def handle_members_remove_error(self, object_id, exc, on_error=EXIT):
-        self.output.print_exception(self.messages['members_remove_error'], params={'object_id': object_id}, exc=exc)
-        self.handle_error(exc, on_error)
-
-    def handle_members_remove_success(self, object_id, members):
-        self.output.print(self.messages['members_remove'], params={'object_id': object_id, 'count': len(members)})
-
-
-class AppsResourceClient(
-        EditResourceClient,
-        CreateResourceClient,
-        ListResourceClient,
-        GetResourceClient,
-        UpdateResourceClient,
-        DeleteResourceClient):
-
-    resource_name = 'apps'
-
-    api_model = APIApplicationModel
-    user_model = UserApplicationModel
-
-
-class RecipesResourceClient(
-        EditResourceClient,
-        CreateResourceClient,
-        ListResourceClient,
-        GetResourceClient,
-        UpdateResourceClient,
-        DeleteResourceClient):
-
-    resource_name = 'recipes'
-
-    api_model = RecipeModel
-    user_model = RecipeModel
-
-
-class TriggersResourceClient(
-        CreateResourceClient,
-        ListResourceClient,
-        GetResourceClient,
-        DeleteResourceClient):
-
-    resource_name = 'triggers'
-
-    api_model = TriggerModel
-    user_model = TriggerModel
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.messages.update(
-            run_done='Status: {SUCCESS}{BOLD}done{RESET}',
-            run_error='Status: {ERROR}{BOLD}error{RESET}',
-        )
-
-    def run(self, trigger_type, arguments, detach=False, poll_interval=1):
-        trigger = self.api_model(type=trigger_type, arguments=arguments)
-
-        trigger = self.create(trigger)
-
-        if detach:
-            return
-
-        try:
-            while trigger.status not in ('done', 'error'):
-                time.sleep(poll_interval)
-                trigger = self.perform_get(trigger.id)
-        except (ValidationError, ClientError) as exc:
-            self.handle_get_error(trigger.id, exc)
-
-        self.handle_run_success(trigger)
-
-        try:
-            self.perform_delete(trigger.id)
-        except ClientError as exc:
-            self.handle_delete_error(trigger.id, exc)
-
-    def handle_run_success(self, obj):
-        message_id = 'run_done' if obj.status == 'done' else 'run_error'
-        self.output.print(self.messages[message_id], params={'obj': obj})
-        if obj.result:
-            self.output.print_json(obj.result, indent=4)
-
-    def prune(self):
-        for trigger in self.perform_list():
-            if trigger.status in ('done', 'error'):
-                self.delete(trigger.id)
-
-
-#
-# Client
-#
-
-class TeacupClient:
-
-    def __init__(self, server, output):
-        self.output = output
-
-        self._create_api(server)
-        self._add_resource(GroupsResourceClient)
-        self._add_resource(AppsResourceClient)
-        self._add_resource(TriggersResourceClient)
-        self._add_resource(RecipesResourceClient)
-
-    def _create_api(self, server):
-        url = server.rstrip('/') + '/v1/'
-        self.api = simple_rest_client.api.API(
-            api_root_url=url,
-            append_slash=True,
-            json_encode_body=True,
-            headers={
-                'Content-type': 'application/json',
-            },
-        )
-
-    def _add_resource(self, resource_class):
-        resource_name = resource_class.resource_name
-        self.api.add_resource(resource_name=resource_name, resource_class=resource_class.api_resource)
-
-        resource_client = resource_class(self.api, self.output)
-        setattr(self, resource_name, resource_client)
-
-    def _read_object(self, fp):
-        with fp:
-            return yaml.safe_load(fp)
-
-    def _parse_object(self, fp, model):
-        document = self._read_object(fp)
-        return model(**document)
-
-    def _iter_objects(self, fp):
-        entries_list = self._read_object(fp)
-        if not isinstance(entries_list, list):
-            raise ValidationError('Expected a list of resources', objects)
-
-        for entry in entries_list:
-            for key, obj in entry.items():
-                if key == 'group':
-                    yield GroupModel(**obj)
-                elif key == 'application':
-                    yield UserApplicationModel(**obj)
-                elif key == 'recipe':
-                    yield RecipeModel(**obj)
-
-    def create(self, options):
-        for obj in self._iter_objects(options.file):
-            resource = getattr(self, obj.resource_name)
-            resource.create(obj)
-
-    def update(self, options):
-        for obj in self._iter_objects(options.file):
-            resource = getattr(self, obj.resource_name)
-
-            try:
-                resource.update(obj, on_error=RAISE)
-            except (ValidationError, ClientError) as exc:
-                if isinstance(exc, ClientError) and exc.response.status_code == 404:
-                    resource.create(obj)
-                else:
-                    resource.handle_update_error(obj, exc)
-                    sys.exit(1)
-
-    def delete(self, options):
-        for obj in self._iter_objects(options.file):
-            resource = getattr(self, obj.resource_name)
-            resource.delete(obj.object_id, on_error=IGNORE)
-
-    def resource_create(self, options):
-        resource_client = getattr(self, options.resource)
-        obj = self._parse_object(options.file, resource_client.user_model)
-        resource_client.create(obj)
-
-    def resource_list(self, options):
-        resource_client = getattr(self, options.resource)
-        resource_client.list(options.quiet)
-
-    def resource_get(self, options):
-        resource_client = getattr(self, options.resource)
-        resource_client.get(options.name)
-
-    def resource_members(self, options):
-        resource_client = getattr(self, options.resource)
-
-        if options.add or options.remove:
-            if options.add:
-                resource_client.members_add(options.name, options.add)
-            if options.remove:
-                resource_client.members_remove(options.name, options.remove)
-        else:
-            resource_client.members(options.name, options.quiet)
-
-    def resource_update(self, options):
-        resource_client = getattr(self, options.resource)
-        obj = self._parse_object(options.file, resource_client.user_model)
-        resource_client.update(obj)
-
-    def resource_edit(self, options):
-        resource_client = getattr(self, options.resource)
-        resource_client.edit(options.name)
-
-    def resource_run(self, options):
-        arguments = {}
-
-        if options.file is not None:
-            arguments = self._read_object(options.file)
-
-        for arg in options.arguments:
-            key, value = arg.split('=', 1)
-            value = yaml.safe_load(value)
-            arguments[key] = value
-
-        resource_client = getattr(self, options.resource)
-        resource_client.run(options.name, arguments, options.detach)
-
-    def resource_delete(self, options):
-        resource_client = getattr(self, options.resource)
-        resource_client.delete(options.name)
-
-    def resource_prune(self, options):
-        resource_client = getattr(self, options.resource)
-        resource_client.prune()
-
-
-#
-# Formatters
-#
-
-class Formatter:
-
-    format_specifiers = {
-        'BOLD': '',
-        'ERROR': '',
-        'SUCCESS': '',
-        'YAML_KEY': '',
-        'YAML_VALUE': '',
-        'RESET': '',
-    }
-
-    def format(self, message, params):
-        params = dict(params)
-        params.update(self.format_specifiers)
-        return message.format_map(params)
-
-    def format_yaml(self, obj, indent=0):
-        s = dump_yaml(obj).strip()
-        if indent:
-            s = textwrap.indent(s, ' ' * indent)
-        return s
-
-    def format_json(self, obj, indent=0):
-        s = dump_json(obj).strip()
-        if indent:
-            s = textwrap.indent(s, ' ' * indent)
-        return s
-
-
-class YamlSyntaxHighlighter:
-
-    def __init__(self, formatter):
-        self.formatter = formatter
-
-    def _iter_tokens(self, document):
-        last_token = None
-        for token in yaml.scan(document):
-            yield last_token, token
-            last_token = token
-
-    def _format_token(self, last_token, token):
-        if isinstance(token, yaml.ScalarToken):
-            if isinstance(last_token, yaml.KeyToken):
-                return 'YAML_KEY', 'RESET'
-            else:
-                return 'YAML_VALUE', 'RESET'
-        else:
-            return None, None
-
-    def _iter_highlight(self, document):
-        for last_token, token in self._iter_tokens(document):
-            start = token.start_mark.index
-            end = token.end_mark.index
-
-            # Whitespace
-            last_token_end = last_token.end_mark.index if last_token is not None else None
-            yield document[last_token_end:start]
-
-            # Token with formatting
-            formatting_start, formatting_end = self._format_token(last_token, token)
-            if formatting_start is not None:
-                yield self.formatter.format_specifiers[formatting_start]
-            yield document[start:end]
-            if formatting_end is not None:
-                yield self.formatter.format_specifiers[formatting_end]
-
-    def highlight(self, document):
-        return ''.join(self._iter_highlight(document))
-
-
-class FancyFormatter(Formatter):
-
-    format_specifiers = {
-        'BOLD': '\033[1m',
-        'ERROR': '\033[31m',
-        'SUCCESS': '\033[32m',
-        'YAML_KEY': '\033[34m',
-        'YAML_VALUE': '\033[31m',
-        'RESET': '\033(B\033[m',
-    }
-
-    def format_yaml(self, obj, indent=0):
-        document = super().format_yaml(obj, indent)
-        formatted_document = YamlSyntaxHighlighter(self).highlight(document)
-        return ''.join(formatted_document)
-
-
-#
-# Output
-#
-
-class OutputPrinter:
-
-    def __init__(self, formatter, stdout=None, stderr=None):
-        self.formatter = formatter
-        self.stdout = stdout if stdout is not None else sys.stdout
-        self.stderr = stderr if stderr is not None else sys.stderr
-
-    def print(self, message, params=None, error=False, end=None):
-        fp = self.stdout if not error else self.stderr
-        if params is not None:
-            message = self.formatter.format(message, params)
-        print(message, end=end, file=fp, flush=True)
-
-    def print_yaml(self, obj, indent=0, error=False):
-        document = self.formatter.format_yaml(obj, indent)
-        self.print(document, error=error)
-
-    def print_json(self, obj, indent=0, error=False):
-        document = self.formatter.format_json(obj, indent)
-        self.print(document, error=error)
-
-    def print_exception(self, message, params, exc):
-        reason, details = self.extract_exception_details(exc)
-
-        params = dict(params)
-        params['reason'] = reason
-
-        self.print(message, params=params, error=True)
-
-        if details is not None:
-            self.print(details, error=True)
-
-    def extract_exception_details(self, exc):
-        reason = details = None
-
-        if isinstance(exc, ScannerError):
-            reason = 'Syntax error'
-            details = str(exc)
-        elif isinstance(exc, ValidationError):
-            reason = 'Invalid document'
-            details = '\n'.join(str(item) for item in exc.args)
-        elif isinstance(exc, ClientError):
-            response = exc.args[1]
-            reason = response.client_response.reason
-            if response.client_response.status_code != 404 and isinstance(response.body, dict):
-                details = self.formatter.format_json(response.body, indent=4)
-        else:
-            raise TypeError('Unsupported exception: ' + type(exc).__name__)
-
-        return reason, details
-
-
-#
-# Option parsing
-#
-
-def add_resource_parser(subparsers, resource, operations):
-    resource_parser = subparsers.add_parser(resource)
-    resource_parser.set_defaults(resource=resource, action=None)
-
-    resource_subparsers = resource_parser.add_subparsers(dest='action')
-    resource_subparsers.required = True
-
-    if 'create' in operations:
-        resource_create_parser = resource_subparsers.add_parser('create')
-        resource_create_parser.set_defaults(action='resource_create')
-        resource_create_parser.add_argument('-f', '--file', type=argparse.FileType(), required=True)
-
-    if 'list' in operations:
-        resource_ls_parser = resource_subparsers.add_parser('ls')
-        resource_ls_parser.set_defaults(action='resource_list')
-        resource_ls_parser.add_argument('-q', '--quiet', action='store_true')
-
-    if 'get' in operations:
-        resource_get_parser = resource_subparsers.add_parser('get')
-        resource_get_parser.set_defaults(action='resource_get')
-        resource_get_parser.add_argument('name')
-
-    if 'members' in operations:
-        resource_members_parser = resource_subparsers.add_parser('members')
-        resource_members_parser.set_defaults(action='resource_members')
-        resource_members_parser.add_argument('name')
-        resource_members_parser.add_argument('-q', '--quiet', action='store_true')
-        resource_members_parser.add_argument('-a', '--add', metavar='ID', action='append')
-        resource_members_parser.add_argument('-r', '--remove', metavar='ID', action='append')
-
-    if 'update' in operations:
-        resource_update_parser = resource_subparsers.add_parser('update')
-        resource_update_parser.set_defaults(action='resource_update')
-        resource_update_parser.add_argument('-f', '--file', type=argparse.FileType(), required=True)
-
-    if 'edit' in operations:
-        resource_edit_parser = resource_subparsers.add_parser('edit')
-        resource_edit_parser.set_defaults(action='resource_edit')
-        resource_edit_parser.add_argument('name')
-
-    if 'run' in operations:
-        resource_run_parser = resource_subparsers.add_parser('run')
-        resource_run_parser.set_defaults(action='resource_run')
-        resource_run_parser.add_argument('name')
-        resource_run_parser.add_argument('-x', '--argument', dest='arguments', action='append')
-        resource_run_parser.add_argument('-f', '--file', type=argparse.FileType())
-        resource_run_parser.add_argument('-d', '--detach', action='store_true')
-
-    if 'delete' in operations:
-        resource_delete_parser = resource_subparsers.add_parser('delete')
-        resource_delete_parser.set_defaults(action='resource_delete')
-        resource_delete_parser.add_argument('name')
-
-    if 'prune' in operations:
-        resource_prune_parser = resource_subparsers.add_parser('prune')
-        resource_prune_parser.set_defaults(action='resource_prune')
-
-
-def parse_args():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('-S', '--server', metavar='http://HOST[:PORT]', default=DEFAULT_SERVER,
-        help='Address of the Teacup API Server (default: {})'.format(DEFAULT_SERVER))
-    parser.add_argument('--color', choices=['never', 'always', 'auto'], default='auto')
-
-    subparsers = parser.add_subparsers(dest='resource')
-    subparsers.required = True
-
-    # create
-    create_parser = subparsers.add_parser('create')
-    create_parser.set_defaults(action='create')
-    create_parser.add_argument('-f', '--file', type=argparse.FileType(), required=True)
-
-    # update
-    update_parser = subparsers.add_parser('update')
-    update_parser.set_defaults(action='update')
-    update_parser.add_argument('-f', '--file', type=argparse.FileType(), required=True)
-
-    # delete
-    delete_parser = subparsers.add_parser('delete')
-    delete_parser.set_defaults(action='delete')
-    delete_parser.add_argument('-f', '--file', type=argparse.FileType(), required=True)
-
-    # groups
-    add_resource_parser(subparsers, 'groups', ['create', 'list', 'get', 'members', 'update', 'edit', 'delete'])
-
-    # apps
-    add_resource_parser(subparsers, 'apps', ['create', 'list', 'get', 'update', 'edit', 'delete'])
-
-    # triggers
-    add_resource_parser(subparsers, 'triggers', ['list', 'get', 'run', 'delete', 'prune'])
-
-    # recipes
-    add_resource_parser(subparsers, 'recipes', ['create', 'list', 'get', 'update', 'edit', 'delete'])
-
-    return parser.parse_args()
-
-
-#
-# Entrypoint
-#
-
-def main():
-    options = parse_args()
-
-    if options.color == 'always' or (options.color == 'auto' and sys.stdout.isatty()):
-        formatter = FancyFormatter()
+def get_object_name(obj):
+    if getattr(obj, 'name', None):
+        name = obj.name
+    elif getattr(obj, 'names', None):
+        name = obj.names
     else:
-        formatter = Formatter()
+        name = obj.id
 
-    output = OutputPrinter(formatter)
-    client = TeacupClient(options.server, output)
-    func = getattr(client, options.action)
+    if isinstance(name, list):
+        name = ', '.join(str(item) for item in name)
 
-    try:
-        func(options)
-    except KeyboardInterrupt:
+    return str(name)
+
+
+def print_table(cols, rows):
+    cols = list(cols)
+    rows = list(rows)
+
+    columns_len = {}
+
+    for column in cols:
+        columns_len[column] = len(column)
+
+    for row in rows:
+        for column, value in zip(cols, row):
+            columns_len[column] = max(columns_len[column], len(value))
+
+    row_format = '   '.join(
+        '{: <%d}' % columns_len[column]
+        for column in cols)
+
+    table = [cols] + rows
+
+    for row in table:
+        print(row_format.format(*row))
+
+
+class Command(metaclass=abc.ABCMeta):
+
+    @property
+    @abc.abstractmethod
+    def command_name(self):
+        raise NotImplementedError
+
+    def add_arguments(self, parser):
         pass
 
 
+class TopLevelCommand(Command):
+
+    @abc.abstractmethod
+    def __call__(self, client):
+        raise NotImplementedError
+
+
+class EntityCommand(Command):
+
+    @abc.abstractmethod
+    def __call__(self, client, model):
+        raise NotImplementedError
+
+    def get_queryset(self, client, model):
+        return model.objects.all()
+
+
+class SingleEntityCommand(EntityCommand):
+
+    def add_arguments(self, parser):
+        parser.add_argument('id')
+
+    def get_object(self, client, model):
+        obj = model(id=client.options.id)
+        obj.reload()
+        return obj
+
+
+class EntityImporter:
+
+    def __call__(self, client, data, model):
+        model(**data).save()
+
+
+class EntityListCommand(EntityCommand):
+
+    command_name = 'ls'
+
+    def __init__(self, columns):
+        self.columns = columns
+
+    def add_arguments(self, parser):
+        parser.add_argument('-q', '--quiet', action='store_true')
+
+    def __call__(self, client, model):
+        qs = self.get_queryset(client, model)
+
+        if client.options.quiet:
+            self.list_quiet(qs)
+        else:
+            self.list_verbose(qs)
+
+    def list_quiet(self, queryset):
+        for obj in queryset:
+            print(get_object_id(obj))
+
+    def list_verbose(self, queryset):
+        header = [column_name for column_name, getter in self.columns]
+        rows = [
+            [getter(obj) for column_name, getter in self.columns]
+            for obj in queryset
+        ]
+        print_table(header, rows)
+
+
+class EntityGetCommand(SingleEntityCommand):
+
+    command_name = 'get'
+
+    def __call__(self, client, model):
+        obj = self.get_object(client, model)
+        yaml.dump(obj._data, sys.stdout)
+
+
+class EntityRemoveCommand(SingleEntityCommand):
+
+    command_name = 'rm'
+
+    def __call__(self, client, model):
+        obj = self.get_object(client, model)
+        obj.delete()
+
+
+class EntityHandler(metaclass=abc.ABCMeta):
+
+    importer = None
+
+    @property
+    @abc.abstractmethod
+    def model(self):
+        raise NotImplementedError
+
+    @property
+    @abc.abstractmethod
+    def entity_name(self):
+        raise NotImplementedError
+
+    @property
+    @abc.abstractmethod
+    def commands(self):
+        raise NotImplementedError
+
+    def add_arguments(self, parser):
+        subparsers = parser.add_subparsers(dest='command')
+        for command in self.commands:
+            command_parser = subparsers.add_parser(command.command_name)
+            command_parser.set_defaults(command=functools.partial(command, model=self.model))
+            command.add_arguments(command_parser)
+
+
+class ImportCommand(TopLevelCommand):
+
+    command_name = 'import'
+
+    def add_arguments(self, parser):
+        parser.add_argument('-f', '--file', type=argparse.FileType(), required=True)
+
+    def __call__(self, client):
+        with client.options.file as fp:
+            document = yaml.safe_load(fp)
+
+        if isinstance(document, list):
+            self.import_all(client, document)
+        else:
+            self.import_one(client, document)
+
+    def import_all(self, client, lst):
+        for item in lst:
+            self.import_one(client, item)
+
+    def import_one(self, client, spec):
+        if not isinstance(spec, dict):
+            raise TypeError(type(spec).__name__)
+        if not spec:
+            raise ValueError('Empty specification')
+        if len(spec) > 1:
+            raise ValueError('Too many items')
+
+        entity_name, = spec
+        entity_spec = spec[entity_name]
+
+        for entity_handler in client.entity_handlers:
+            if entity_handler.entity_name == entity_name and entity_handler.importer is not None:
+                entity_handler.importer(client, data=entity_spec, model=entity_handler.model)
+                return
+
+        raise ValueError(entity_name)
+
+
+class ApplicationImporter(EntityImporter):
+
+    def __call__(self, client, data, model):
+        api_data = self.parse(data)
+        super().__call__(client, api_data, model)
+
+    def parse(self, data):
+        result = {}
+
+        if 'name' in data:
+            result['name'] = data['name']
+
+        if 'components' in data:
+            components = set()
+            links = []
+
+            for link_spec in data['components']:
+                src_component, dest_component, dest_service = self.parse_component_link(link_spec)
+                components.add(src_component)
+                components.add(dest_component)
+                links.append({'src_component': src_component, 'dest_component': dest_component, 'dest_service': dest_service})
+
+            result['components'] = list(components)
+            result['links'] = links
+
+        if 'expose' in data:
+            expose = []
+
+            for service_spec in data['expose']:
+                component, service = self.parse_exposed_service(service_spec)
+                expose.append({'component': component, 'service': service})
+
+            result['expose'] = expose
+
+        return result
+
+    def parse_component_link(self, link_spec):
+        match = re.match(r'^\s*([\w._-]+)\s*=>\s*([\w._-]+)\s*\[\s*([\w._-]+)\s*\]\s*$', link_spec)
+        return match.groups()
+
+    def parse_exposed_service(self, service_spec):
+        match = re.match(r'^\s*([\w._-]+)\s*\[\s*([\w._-]+)\s*\]\s*$', service_spec)
+        return match.groups()
+
+
+class AgentHandler(EntityHandler):
+
+    model = Agent
+    entity_name = 'agent'
+
+    commands = [
+        EntityListCommand([
+            ('ID', get_object_id)
+        ]),
+        EntityGetCommand(),
+    ]
+
+
+class ApplicationHandler(EntityHandler):
+
+    model = Application
+    entity_name = 'application'
+
+    commands = [
+        EntityListCommand([
+            ('ID', get_object_id),
+            ('NAME', get_object_name),
+        ]),
+        EntityGetCommand(),
+        EntityRemoveCommand(),
+    ]
+
+    importer = ApplicationImporter()
+
+
+class GroupHandler(EntityHandler):
+
+    model = Group
+    entity_name = 'group'
+
+    commands = [
+        EntityListCommand([
+            ('ID', get_object_id),
+            ('NAME', get_object_name),
+        ]),
+        EntityGetCommand(),
+        EntityRemoveCommand(),
+    ]
+
+    importer = EntityImporter()
+
+
+class RecipeHandler(EntityHandler):
+
+    model = Recipe
+    entity_name = 'recipe'
+
+    commands = [
+        EntityListCommand([
+            ('ID', get_object_id),
+            ('TYPE', get_object_type),
+            ('NAME', get_object_name),
+        ]),
+        EntityGetCommand(),
+        EntityRemoveCommand(),
+    ]
+
+    importer = EntityImporter()
+
+
+class ResourceHandler(EntityHandler):
+
+    model = Resource
+    entity_name = 'resource'
+
+    commands = [
+        EntityListCommand([
+            ('ID', get_object_id),
+            ('TYPE', get_object_type),
+            ('NAMES', get_object_name),
+        ]),
+        EntityGetCommand(),
+    ]
+
+
+class StormCtl(CommandLineClient):
+
+    top_level_commands = [
+        ImportCommand(),
+    ]
+
+    entity_handlers = [
+        AgentHandler(),
+        ApplicationHandler(),
+        GroupHandler(),
+        RecipeHandler(),
+        ResourceHandler(),
+    ]
+
+    def add_arguments(self, parser):
+        super().add_arguments(parser)
+
+        subparsers = parser.add_subparsers(dest='command')
+
+        for command in self.top_level_commands:
+            command_parser = subparsers.add_parser(command.command_name)
+            command_parser.set_defaults(command=command)
+            command.add_arguments(command_parser)
+
+        for entity in self.entity_handlers:
+            entity_parser = subparsers.add_parser(entity.entity_name)
+            entity_parser.set_defaults(entity=entity)
+            entity.add_arguments(entity_parser)
+
+    def run(self):
+        command = self.options.command
+        command(self)
+
+
 if __name__ == '__main__':
-    main()
+    StormCtl.main()
