@@ -114,6 +114,15 @@ def cleanup_expired_agents():
     _cleanup_timestamp = time.time()
 
 
+def cleanup_owned_documents(deleted_agent_ids):
+    orphaned_resources = Resource.objects.filter(owner__in=deleted_agent_ids)
+    orphaned_resources.delete()
+
+    orphaned_triggers = Trigger.objects.filter(owner__in=deleted_agent_ids)
+    orphaned_triggers.filter(status='running').update(status='pending')
+    orphaned_triggers.update(owner=None)
+
+
 class FancyIdField(StringField):
 
     def __init__(self, prefix, *args, **kwargs):
@@ -177,16 +186,9 @@ class AgentQuerySet(QuerySet):
 
     def delete(self, *args, **kwargs):
         queryset = self.clone()
-        agent_ids = [agent.pk for agent in queryset]
-
-        owned_resources = Resource.objects.filter(owner__in=agent_ids)
-        owned_resources.delete()
-
-        owned_triggers = Trigger.objects.filter(owner__in=agent_ids)
-        owned_triggers.filter(status='running').update(status='pending')
-        owned_triggers.update(owner=None)
-
+        agent_ids = list(queryset.values_list('pk'))
         super().delete(*args, **kwargs)
+        cleanup_owned_documents(agent_ids)
 
 
 class Agent(TypeMixin, Document):
@@ -200,6 +202,10 @@ class Agent(TypeMixin, Document):
         'queryset_class': AgentQuerySet,
         'indexes': ['heartbeat'],
     }
+
+    def delete(self):
+        super().delete()
+        cleanup_owned_documents([self.pk])
 
 
 class Resource(TypeMixin, Document):
