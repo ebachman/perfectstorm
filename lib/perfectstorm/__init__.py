@@ -28,6 +28,7 @@
 
 from .api import connect
 from .entities import (
+    Agent,
     Application,
     Group,
     Recipe,
@@ -37,6 +38,7 @@ from .entities import (
 
 
 __all__ = [
+    'Agent',
     'Application',
     'Group',
     'Recipe',
