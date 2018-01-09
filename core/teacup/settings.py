@@ -134,7 +134,7 @@ REST_FRAMEWORK = {
 # MongoDB
 # http://docs.mongoengine.org/guide/connecting.html
 
-DEFAULT_MONGODB_URI = 'mongodb://127.0.0.1/perfectstorm/'
+DEFAULT_MONGODB_URI = 'mongodb://127.0.0.1/perfectstorm'
 MONGODB_URI = os.environ.get('STORM_MONGODB') or DEFAULT_MONGODB_URI
 
 import mongoengine
