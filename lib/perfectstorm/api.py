@@ -432,17 +432,19 @@ class Model(metaclass=ModelMeta):
             raise AttributeError('No ID has been set')
         return urljoin(self.objects.url, quote(object_id))
 
-    def reload(self):
+    def reload(self, session):
         """Fetch the data from the API server for this object."""
+        if session is None:
+            session = self._session
         try:
-            response_data = self._session.get(self.url)
+            response_data = session.get(self.url)
         except HTTPError as exc:
             if exc.status_code == 404:
                 raise ObjectNotFound(self.pk)
             raise
         self._data = response_data
 
-    def save(self, validate=True):
+    def save(self, validate=True, session=None):
         """
         Store the object on the API server. This will either create a new
         entity or update an existing one, depending on whether this object has
@@ -450,6 +452,9 @@ class Model(metaclass=ModelMeta):
         """
         if validate:
             self.validate()
+
+        if session is None:
+            session = self._session
 
         if self.pk is not None:
             # If an ID is defined, try to update
@@ -461,25 +466,28 @@ class Model(metaclass=ModelMeta):
                 return
 
         # Either an ID is not defined, or the update returned 404
-        self._create()
+        self._create(session)
 
-    def _create(self):
-        response_data = self._session.post(self.objects.url, json=self._data)
+    def _create(self, session):
+        response_data = session.post(self.objects.url, json=self._data)
         self._data = response_data
 
-    def _update(self):
+    def _update(self, session):
         try:
-            response_data = self._session.session.put(self.url, json=self._data)
+            response_data = session.put(self.url, json=self._data)
         except HTTPError as exc:
             if exc.response.status_code == 404:
                 raise ObjectNotFound(self.pk)
             raise
         self._data = response_data
 
-    def delete(self):
+    def delete(self, session=None):
         """Delete this object from the API server."""
+        if session is None:
+            session = self._session
+
         try:
-            self._session.session.delete(self.url)
+            session.delete(self.url)
         except HTTPError as exc:
             if exc.response.status_code == 404:
                 raise ObjectNotFound(self.pk)
