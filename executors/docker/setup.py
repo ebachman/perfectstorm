@@ -31,15 +31,9 @@ from setuptools import setup
 setup(
     name='perfectstorm-executors-docker',
     version='0.1',
-    scripts=[
-        'storm-docker-deployer',
-        'storm-docker-discovery',
-    ],
+    scripts=['storm-docker'],
     install_requires=[
         'perfectstorm-lib',
         'requests-unixsocket >= 0.1, < 0.2',
-    ],
-    dependency_links=[
-        '../../library',
     ],
 )

@@ -34,6 +34,8 @@ import time
 import traceback
 
 from . import api
+from .entities import Agent
+from .executors import RestartingProcessExecutorRunner
 
 
 class CommandLineClient(metaclass=abc.ABCMeta):
@@ -97,7 +99,7 @@ class DaemonClient(CommandLineClient):
 
     @classmethod
     def main(cls, *args, **kwargs):
-        self = cls(**kwargs)
+        self = cls(*args, **kwargs)
         self.setup()
         try:
             while True:
@@ -113,14 +115,46 @@ class DaemonClient(CommandLineClient):
         sys.exit()
 
 
-class ExecutorClient(CommandLineClient):
+class AgentClient(DaemonClient):
 
-    def get_executor(self):
-        executor_class = getattr(self, 'executor_class', None)
-        if executor_class is None:
-            raise NotImplementedError('Subclasses must set executor_class or override get_executor()')
-        return executor_class()
+    @property
+    @abc.abstractmethod
+    def agent_type(self):
+        raise NotImplementedError
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.agent = None
+
+    def setup(self):
+        super().setup()
+        self.agent = Agent(type=self.agent_type)
+        self.agent.save()
+        self.agent.heartbeat.start()
+
+    def teardown(self):
+        super().teardown()
+        self.agent.heartbeat.stop()
+        self.agent.delete()
+        self.agent = None
+
+
+class ExecutorClient(AgentClient, CommandLineClient):
+
+    def get_executors(self):
+        executor_classes = getattr(self, 'executor_classes', None)
+        if executor_classes is None:
+            raise NotImplementedError('Subclasses must set executor_classes or override get_executors()')
+        return [cls() for cls in executor_classes]
+
+    def get_runner(self):
+        runner_class = getattr(self, 'runner_class', None)
+        if runner_class is None:
+            runner_class = RestartingProcessExecutorRunner
+        executors = self.get_executors()
+        return runner_class(executors)
 
     def run(self):
-        executor = self.get_executor()
-        executor.run()
+        runner = self.get_runner()
+        runner.dispatch()
+        runner.wait()

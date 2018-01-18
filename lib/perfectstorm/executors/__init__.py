@@ -27,7 +27,14 @@
 # of the authors and should not be interpreted as representing official policies,
 # either expressed or implied, of the Perfect Storm Project.
 
-from .base import Executor, PollingExecutor, AgentExecutor
+from .base import (
+    AgentExecutor,
+    Executor,
+    ExecutorRunner,
+    PollingExecutor,
+    ProcessExecutorRunner,
+    RestartingProcessExecutorRunner,
+)
 from .discovery import DiscoveryExecutor
 from .triggers import TriggerExecutor, RecipeExecutor
 
@@ -35,7 +42,10 @@ __all__ = [
     'AgentExecutor',
     'DiscoveryExecutor',
     'Executor',
+    'ExecutorRunner',
     'PollingExecutor',
+    'ProcessExecutorRunner',
     'RecipeExecutor',
+    'RestartingProcessExecutorRunner',
     'TriggerExecutor',
 ]

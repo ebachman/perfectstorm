@@ -28,17 +28,23 @@
 # of the authors and should not be interpreted as representing official policies,
 # either expressed or implied, of the Perfect Storm Project.
 
+import collections
 import re
 import shlex
 import subprocess
 
 import yaml
 
+import requests_unixsocket
+
+from perfectstorm import Resource
 from perfectstorm.cli import DaemonClient, ExecutorClient
-from perfectstorm.executors import RecipeExecutor
+from perfectstorm.executors import DiscoveryExecutor, RecipeExecutor
 
 
 _var_re = re.compile(r'(?<!\$)\$(\w+|{[^}]*})')
+
+DockerSnapshot = collections.namedtuple('DockerSnapshot', 'info containers')
 
 
 class DockerCommand:
@@ -151,9 +157,140 @@ class DockerRecipeExecutor(RecipeExecutor):
             command.run(environ)
 
 
-class DockerDeployerClient(DaemonClient, ExecutorClient):
+class DockerDiscoveryExecutor(DiscoveryExecutor):
 
-    executor_class = DockerRecipeExecutor
+    agent_type = 'docker-discovery'
+
+    _url_prefix = 'http+unix://%2Fvar%2Frun%2Fdocker.sock/'
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._session = requests_unixsocket.Session()
+
+    def _get_json(self, path):
+        url = '/'.join((self._url_prefix.rstrip('/'), path.lstrip('/')))
+        response = self._session.get(url)
+        response.raise_for_status()
+        return response.json()
+
+    @property
+    def docker_host_id(self):
+        return self.snapshot.info['ID']
+
+    def take_current_snapshot(self):
+        info = self._get_json('/info')
+        del info['SystemTime']
+
+        containers = self._get_json('/containers/json?all=1')
+        containers = {data['Id']: data for data in containers}
+
+        return DockerSnapshot(info, containers)
+
+    def take_stored_snapshot(self):
+        info = None
+        containers = {}
+
+        for resource in Resource.objects.all():
+            if self.docker_host_id in resource.names:
+                info = resource.snapshot
+            elif resource.host == self.docker_host_id:
+                containers[resource.id] = resource.snapshot
+
+        return DockerSnapshot(info, containers)
+
+    def compare_snapshots(self, prev, curr):
+        created = []
+        updated = []
+        deleted = []
+
+        if prev is None:
+            # First run
+            created.append(('info', curr.info))
+            created.extend(('container', container) for container in curr.containers.values())
+        else:
+            # Compare info
+            if prev.info != curr.info:
+                updated.append(('info', curr.info))
+
+            # Compare containers
+            prev_containers = set(prev.containers)
+            curr_containers = set(curr.containers)
+
+            created_containers = curr_containers.difference(prev_containers)
+            deleted_containers = prev_containers.difference(curr_containers)
+            common_containers = prev_containers & curr_containers
+
+            created.extend(('container', curr.containers[container_id]) for container_id in created_containers)
+            deleted.extend(('container', prev.containers[container_id]) for container_id in deleted_containers)
+
+            for container_id in common_containers:
+                prev_container = prev.containers[container_id]
+                curr_container = curr.containers[container_id]
+
+                if prev_container != curr_container:
+                    updated.append(('container', curr_container))
+
+        # Return differences
+        return created, updated, deleted
+
+    def create_resource(self, resource_data):
+        self.save_resource(resource_data)
+
+    def update_resource(self, resource_data):
+        self.save_resource(resource_data)
+
+    def save_resource(self, resource_data):
+        resource_type, resource_data = resource_data
+
+        if resource_type == 'info':
+            self.save_docker_info(resource_data)
+        elif resource_type == 'container':
+            self.save_container(resource_data)
+        else:
+            raise AssertionError(resource_type)
+
+    def save_docker_info(self, data):
+        names = [data['ID'], data['Name']]
+
+        resource = Resource(
+            type='docker-daemon',
+            names=names,
+            owner=self.agent.id,
+            snapshot=data,
+        )
+
+        resource.save()
+
+    def save_container(self, data):
+        names = [data['Id']]
+        names.extend(name.lstrip('/') for name in data['Names'])
+
+        resource = Resource(
+            type='container',
+            names=names,
+            owner=self.agent.id,
+            image=data['Image'],
+            host=self.snapshot.info['ID'],
+            snapshot=data,
+        )
+
+        resource.save()
+
+    def delete_resource(self, resource_data):
+        resource_type, resource_data = resource_data
+        assert resource_type == 'container'
+        Resource(names=resource_data['Id']).delete()
+
+
+class DockerDeployerClient(ExecutorClient):
+
+    agent_type = 'docker'
+
+    def get_executors(self):
+        return [
+            DockerDiscoveryExecutor(self.agent),
+            DockerRecipeExecutor(self.agent),
+        ]
 
 
 if __name__ == '__main__':
