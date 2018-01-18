@@ -77,7 +77,7 @@ class Heartbeat:
 
     def _post_heartbeat(self):
         url = urljoin(self.instance.url + '/', 'heartbeat')
-        self.instance.session.post(url)
+        self.instance._session.post(url)
 
     def start(self, interval=None):
         if self._thread is None:

@@ -131,12 +131,12 @@ class Collection:
         self.query = query
         if session is None:
             session = current_session()
-        self.session = session
+        self._session = session
         self._elems = None
         self._lock = threading.RLock()
 
     def all(self):
-        return self.__class__(model=self.model, query=self.query, session=self.session)
+        return self.__class__(model=self.model, query=self.query, session=self._session)
 
     def filter(self, *args, **kwargs):
         query = dict(*args, **kwargs)
@@ -144,7 +144,7 @@ class Collection:
             query = self.query
         elif self.query:
             query = {'$and': [self.query, query]}
-        return self.__class__(model=self.model, query=query, session=self.session)
+        return self.__class__(model=self.model, query=query, session=self._session)
 
     def __iter__(self):
         self._retrieve()
@@ -170,8 +170,8 @@ class Collection:
                 params = {'q': json_compact(self.query)}
             else:
                 params = None
-            documents = self.session.get(self.model.Meta.path, params=params)
-            self._elems = [self.model(doc, session=self.session) for doc in documents]
+            documents = self._session.get(self.model.Meta.path, params=params)
+            self._elems = [self.model(doc, session=self._session) for doc in documents]
 
         return self._elems
 
@@ -205,24 +205,24 @@ class Manager:
 
     def __init__(self, model, session=None):
         self.model = model
-        self.session = session
+        self._session = session
 
     def __call__(self, session=None):
         if session is None:
-            session = self.session
+            session = self._session
         return self.__class__(model=self.model, session=session)
 
     @property
     def url(self):
-        session = self.session if self.session is not None else current_session()
+        session = self._session if self._session is not None else current_session()
         return urljoin(session.api_root, self.model.Meta.path)
 
     def all(self):
-        return Collection(model=self.model, session=self.session)
+        return Collection(model=self.model, session=self._session)
 
     def filter(self, *args, **kwargs):
         query = dict(*args, **kwargs)
-        return Collection(model=self.model, query=query, session=self.session)
+        return Collection(model=self.model, query=query, session=self._session)
 
     def get(self, *args, **kwargs):
         return self.filter(*args, **kwargs).get()
@@ -275,7 +275,7 @@ class Model(metaclass=ModelMeta):
         self.__dict__['_data'] = dict(*args, **kwargs)
         if session is None:
             session = current_session()
-        self.__dict__['session'] = session
+        self.__dict__['_session'] = session
 
     @property
     def id(self):
@@ -314,7 +314,7 @@ class Model(metaclass=ModelMeta):
     def reload(self):
         """Fetch the data from the API server for this object."""
         try:
-            response_data = self.session.get(self.url)
+            response_data = self._session.get(self.url)
         except HTTPError as exc:
             if exc.status_code == 404:
                 raise ObjectNotFound(self.id)
@@ -340,12 +340,12 @@ class Model(metaclass=ModelMeta):
         self._create()
 
     def _create(self):
-        response_data = self.session.post(self.objects.url, json=self._data)
+        response_data = self._session.post(self.objects.url, json=self._data)
         self._data = response_data
 
     def _update(self):
         try:
-            response_data = self.session.put(self.url, json=self._data)
+            response_data = self._session.session.put(self.url, json=self._data)
         except HTTPError as exc:
             if exc.response.status_code == 404:
                 raise ObjectNotFound(self.id)
@@ -355,7 +355,7 @@ class Model(metaclass=ModelMeta):
     def delete(self):
         """Delete this object from the API server."""
         try:
-            self.session.delete(self.url)
+            self._session.session.delete(self.url)
         except HTTPError as exc:
             if exc.response.status_code == 404:
                 raise ObjectNotFound(self.id)

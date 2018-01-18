@@ -77,22 +77,21 @@ class GroupMembersCollection(Collection):
 
     def add(self, members):
         member_ids = [member.id for member in members]
-        self.session.post(json={'include': member_ids})
+        self._session.post(json={'include': member_ids})
 
     def remove(self, members):
         member_ids = [member.id for member in members]
-        self.session.post(json={'exclude': member_ids})
+        self._session.post(json={'exclude': member_ids})
 
 
 class Group(Model):
 
     class Meta:
         path = '/v1/groups/'
-        id_field = 'name'
 
     def members(self, *args, **kwargs):
         query = dict(*args, **kwargs)
-        return GroupMembersCollection(group=self, model=Resource, query=query, session=self.session)
+        return GroupMembersCollection(group=self, model=Resource, query=query, session=self._session)
 
 
 class Application(Model):
@@ -147,7 +146,7 @@ class Trigger(Model):
 
     def handle(self, agent):
         url = urljoin(self.url + '/', 'handle')
-        self.session.post(url, json={'agent': agent.id})
+        self._session.post(url, json={'agent': agent.id})
         self.reload()
         return TriggerHandler(self)
 
