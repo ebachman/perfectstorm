@@ -32,6 +32,20 @@ class PerfectStormException(Exception):
     pass
 
 
+class ValidationError(PerfectStormException):
+
+    def __init__(self, *args, field=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.field = field
+
+    def __str__(self):
+        s = super().__str__()
+        if self.field is None:
+            return s
+        else:
+            return '%s: %s' % (self.field, s)
+
+
 class ObjectNotFound(PerfectStormException):
 
     pass

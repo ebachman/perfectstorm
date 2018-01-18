@@ -31,7 +31,7 @@ import time
 import traceback
 from urllib.parse import urljoin
 
-from . import exceptions
+from . import api, exceptions
 from .api import Model, Collection
 from .heartbeat import Heartbeat
 
@@ -51,18 +51,28 @@ class Agent(Model):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.__dict__['heartbeat'] = Heartbeat(self)
+        self.heartbeat = Heartbeat(self)
+
+    id = api.StringField(primary_key=True)
+    type = api.StringField()
 
     class Meta:
         path = '/v1/agents/'
-        id_field = 'id'
 
 
 class Resource(Model):
 
+    id = api.StringField(primary_key=True)
+    type = api.StringField()
+    names = api.ListField(api.StringField(), primary_key=True)
+
+    owner = api.StringField()
+    image = api.StringField(null=True)
+    host = api.StringField(null=True)
+    snapshot = api.DictField(null=True)
+
     class Meta:
         path = '/v1/resources/'
-        id_field = 'names'
 
 
 class GroupMembersCollection(Collection):
@@ -86,6 +96,15 @@ class GroupMembersCollection(Collection):
 
 class Group(Model):
 
+    id = api.StringField(primary_key=True)
+    name = api.StringField(primary_key=True)
+
+    query = api.DictField()
+    services = api.DictField()
+
+    include = api.ListField(api.StringField())
+    exclude = api.ListField(api.StringField())
+
     class Meta:
         path = '/v1/groups/'
 
@@ -96,16 +115,31 @@ class Group(Model):
 
 class Application(Model):
 
+    id = api.StringField(primary_key=True)
+    name = api.StringField(primary_key=True)
+
+    components = api.ListField(api.StringField())
+    links = api.DictField()
+    expose = api.ListField(api.StringField())
+
     class Meta:
         path = '/v1/apps/'
-        id_field = 'name'
 
 
 class Recipe(Model):
 
+    id = api.StringField(primary_key=True)
+    name = api.StringField(primary_key=True)
+    type = api.StringField()
+
+    content = api.StringField()
+    options = api.DictField()
+    params = api.DictField()
+
+    target = api.StringField()
+
     class Meta:
         path = '/v1/recipes/'
-        id_field = 'name'
 
 
 class TriggerHandler:
@@ -128,9 +162,17 @@ class TriggerHandler:
 
 class Trigger(Model):
 
+    id = api.StringField(primary_key=True)
+    type = api.StringField()
+    status = api.StringField()
+
+    arguments = api.DictField()
+    result = api.DictField()
+
+    created = api.StringField()
+
     class Meta:
         path = 'v1/triggers/'
-        id_field = 'id'
 
     def is_pending(self):
         return self.status == 'pending'
