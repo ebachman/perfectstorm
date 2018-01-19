@@ -245,7 +245,7 @@ class Model(metaclass=ModelMeta):
             raise AttributeError('No ID has been set')
         return urljoin(self.objects.url, quote(object_id))
 
-    def reload(self, session):
+    def reload(self, session=None):
         """Fetch the data from the API server for this object."""
         if session is None:
             session = self._session
