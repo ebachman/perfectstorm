@@ -35,7 +35,14 @@ import sys
 
 import yaml
 
-from perfectstorm import Agent, Application, Group, Recipe, Resource
+from perfectstorm import (
+    Agent,
+    Application,
+    Group,
+    Recipe,
+    Resource,
+    Trigger,
+)
 from perfectstorm.cli import CommandLineClient
 
 
@@ -59,6 +66,10 @@ def get_object_name(obj):
         name = ', '.join(str(item) for item in name)
 
     return str(name)
+
+
+def get_object_status(obj):
+    return obj.status or 'unknown'
 
 
 def print_table(cols, rows):
@@ -369,6 +380,53 @@ class ResourceHandler(EntityHandler):
     ]
 
 
+class TriggerRunCommand(EntityCommand):
+
+    command_name = 'run'
+
+    def add_arguments(self, parser):
+        parser.add_argument('-d', '--detach', action='store_true')
+        parser.add_argument('-k', '--keep', action='store_true')
+        parser.add_argument('-t', '--type', required=True)
+        parser.add_argument('arguments', metavar='ARGUMENT[=VALUE]', type=self._parse_trigger_arg, nargs='*')
+
+    def _parse_trigger_arg(self, arg):
+        parts = arg.split('=', 1)
+        if len(parts) == 1:
+            return {arg: True}
+        else:
+            key, value = parts
+            return {key: yaml.safe_load(value)}
+
+    def __call__(self, client, model):
+        arguments = {}
+        for arg in client.options.arguments:
+            arguments.update(arg)
+
+        obj = model(type=client.options.type, arguments=arguments)
+        obj.save()
+
+        if not client.options.detach:
+            obj.wait(delete=not client.options.keep)
+
+
+class TriggerHandler(EntityHandler):
+
+    model = Trigger
+    entity_name = 'trigger'
+
+    commands = [
+        EntityListCommand([
+            ('ID', get_object_id),
+            ('TYPE', get_object_type),
+            ('STATUS', get_object_status),
+        ]),
+        EntityGetCommand(),
+        EntityRemoveCommand(),
+        TriggerRunCommand(),
+    ]
+
+
 class StormCtl(CommandLineClient):
 
     top_level_commands = [
@@ -381,6 +439,7 @@ class StormCtl(CommandLineClient):
         GroupHandler(),
         RecipeHandler(),
         ResourceHandler(),
+        TriggerHandler(),
     ]
 
     def add_arguments(self, parser):
