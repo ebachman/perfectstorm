@@ -29,6 +29,7 @@
 
 import abc
 import argparse
+import collections
 import functools
 import re
 import sys
@@ -44,6 +45,21 @@ from perfectstorm import (
     Trigger,
 )
 from perfectstorm.cli import CommandLineClient
+
+
+def _dict_representer(dumper, data):
+    return dumper.represent_dict(data.items())
+
+
+yaml.add_representer(collections.OrderedDict, _dict_representer)
+
+
+def yaml_load(arg):
+    return yaml.safe_load(arg)
+
+
+def yaml_dump(arg):
+    return yaml.dump(arg, sys.stdout, default_flow_style=False)
 
 
 def get_object_id(obj):
@@ -189,7 +205,12 @@ class EntityGetCommand(SingleEntityCommand):
 
     def __call__(self, client, model):
         obj = self.get_object(client, model)
-        yaml.dump(obj._data, sys.stdout)
+
+        data = collections.OrderedDict()
+        for name in obj._fields:
+            data[name] = getattr(obj, name)
+
+        yaml_dump(data)
 
 
 class EntityRemoveCommand(MultipleEntitiesCommand):
@@ -237,7 +258,7 @@ class ImportCommand(TopLevelCommand):
 
     def __call__(self, client):
         with client.options.file as fp:
-            document = yaml.safe_load(fp)
+            document = yaml_load(fp)
 
         if isinstance(document, list):
             self.import_all(client, document)
@@ -408,7 +429,7 @@ class TriggerRunCommand(EntityCommand):
             return {arg: True}
         else:
             key, value = parts
-            return {key: yaml.safe_load(value)}
+            return {key: yaml_load(value)}
 
     def __call__(self, client, model):
         arguments = {}
