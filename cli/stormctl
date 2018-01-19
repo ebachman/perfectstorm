@@ -129,9 +129,21 @@ class SingleEntityCommand(EntityCommand):
         parser.add_argument('id')
 
     def get_object(self, client, model):
-        obj = model(id=client.options.id)
+        obj = model(pk=client.options.id)
         obj.reload()
         return obj
+
+
+class MultipleEntitiesCommand(EntityCommand):
+
+    def add_arguments(self, parser):
+        parser.add_argument('id', nargs='+')
+
+    def iter_objects(self, client, model):
+        for pk in client.options.id:
+            obj = model(pk=pk)
+            obj.reload()
+            yield obj
 
 
 class EntityImporter:
@@ -180,13 +192,13 @@ class EntityGetCommand(SingleEntityCommand):
         yaml.dump(obj._data, sys.stdout)
 
 
-class EntityRemoveCommand(SingleEntityCommand):
+class EntityRemoveCommand(MultipleEntitiesCommand):
 
     command_name = 'rm'
 
     def __call__(self, client, model):
-        obj = self.get_object(client, model)
-        obj.delete()
+        for obj in self.iter_objects(client, model):
+            obj.delete()
 
 
 class EntityHandler(metaclass=abc.ABCMeta):
