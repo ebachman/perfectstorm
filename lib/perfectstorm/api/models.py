@@ -165,12 +165,12 @@ class Trigger(Model):
 
     id = StringField(primary_key=True)
     type = StringField()
-    status = StringField()
+    status = StringField(default='pending')
 
     arguments = DictField()
     result = DictField()
 
-    created = StringField()
+    created = StringField(null=True)
 
     class Meta:
         path = 'v1/triggers/'
@@ -196,18 +196,22 @@ class Trigger(Model):
     def complete(self, result=None, status='done'):
         if result is None:
             result = {}
-        self.status = status
-        self.result = result
-        self.save()
+        url = urljoin(self.url + '/', 'complete')
+        self._session.post(url, json={'result': result})
+        self.reload()
 
     def fail(self, exception):
+        url = urljoin(self.url + '/', 'fail')
         result = {'exception': json_exception(exception)}
-        self.complete(result, 'error')
+        self._session.post(url, json={'result': result})
+        self.reload()
 
     def wait(self, poll_interval=1, delete=True, raise_on_error=True):
-        while not self.is_complete():
+        while True:
+            self.reload()
+            if self.is_complete():
+                break
             time.sleep(poll_interval)
-            self.refresh()
 
         if delete:
             self.delete()
@@ -231,4 +235,4 @@ class Trigger(Model):
                 exc_info.get('traceback'),
             )
 
-        raise TriggerError(self.identifier, trigger=self) from parent_exception
+        raise TriggerError(self.pk, trigger=self) from parent_exception

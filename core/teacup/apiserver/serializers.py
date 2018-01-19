@@ -199,6 +199,15 @@ class ApplicationSerializer(DocumentSerializer):
         return data
 
 
+class CreateTriggerSerializer(DocumentSerializer):
+
+    arguments = EscapedDynamicField(default=dict)
+
+    class Meta:
+        model = Trigger
+        fields = ('type', 'arguments')
+
+
 class TriggerSerializer(DocumentSerializer):
 
     arguments = EscapedDynamicField(default=dict)
@@ -206,12 +215,18 @@ class TriggerSerializer(DocumentSerializer):
 
     class Meta:
         model = Trigger
-        fields = ('id', 'type', 'status', 'arguments', 'result', 'created')
+        fields = ('id', 'type', 'arguments', 'result', 'status', 'created')
+        read_only_fields = ('status', 'created')
 
 
 class TriggerHandleSerializer(Serializer):
 
     agent = StrReferenceField(Agent)
+
+
+class TriggerCompleteSerializer(Serializer):
+
+    result = EscapedDynamicField(default=dict)
 
 
 class RecipeSerializer(DocumentSerializer):

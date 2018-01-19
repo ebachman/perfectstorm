@@ -55,10 +55,12 @@ from teacup.apiserver.models import (
 from teacup.apiserver.serializers import (
     AgentSerializer,
     ApplicationSerializer,
+    CreateTriggerSerializer,
     GroupAddRemoveMembersSerializer,
     GroupSerializer,
     RecipeSerializer,
     ResourceSerializer,
+    TriggerCompleteSerializer,
     TriggerHandleSerializer,
     TriggerSerializer,
 )
@@ -219,9 +221,14 @@ class RecipeViewSet(MultiLookupMixin, QueryFilterMixin, ModelViewSet):
 class TriggerViewSet(CleanupAgentsMixin, QueryFilterMixin, ModelViewSet):
 
     queryset = Trigger.objects.all()
-    serializer_class = TriggerSerializer
 
     lookup_field = 'id'
+
+    def get_serializer_class(self):
+        if self.action == 'create':
+            return CreateTriggerSerializer
+        else:
+            return TriggerSerializer
 
     @detail_route(methods=['POST'])
     def handle(self, request, **kwargs):
@@ -259,4 +266,46 @@ class TriggerViewSet(CleanupAgentsMixin, QueryFilterMixin, ModelViewSet):
                 status=status.HTTP_409_CONFLICT)
 
         # Case 3, success
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @detail_route(methods=['POST'])
+    def complete(self, request, **kwargs):
+        trigger = self.get_object()
+
+        serializer = TriggerCompleteSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        result = serializer.validated_data['result']
+
+        if trigger.status != 'running':
+            return Response(
+                {'status': ["Trigger is not in 'running' state"]},
+                status=status.HTTP_409_CONFLICT)
+
+        trigger.owner = None
+        trigger.status = 'done'
+        trigger.result = result
+        trigger.save()
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @detail_route(methods=['POST'])
+    def fail(self, request, **kwargs):
+        trigger = self.get_object()
+
+        serializer = TriggerCompleteSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        result = serializer.validated_data['result']
+
+        if trigger.status != 'running':
+            return Response(
+                {'status': ["Trigger is not in 'running' state"]},
+                status=status.HTTP_409_CONFLICT)
+
+        trigger.owner = None
+        trigger.status = 'error'
+        trigger.result = result
+        trigger.save()
+
         return Response(status=status.HTTP_204_NO_CONTENT)
