@@ -50,19 +50,17 @@ DockerSnapshot = collections.namedtuple('DockerSnapshot', 'info containers')
 class DockerCommand:
 
     def __init__(self, args):
+        var = None
         err = False
 
-        if isinstance(args, str):
-            var = None
-            args = shlex.split(args)
-        elif isinstance(args, list):
-            var = None
-        elif isinstance(args, dict):
+        if isinstance(args, dict):
             if len(args) == 1:
                 var, args = args.popitem()
-            else:
-                err = True
-        else:
+
+        if isinstance(args, str):
+            args = shlex.split(args)
+
+        if not isinstance(args, list):
             err = True
 
         if not err:
@@ -108,7 +106,7 @@ class DockerCommand:
         if environ is None:
             environ = {}
 
-        args = ['docker', self.cmd] + self.expand_args(self.args)
+        args = ['docker', self.cmd] + self.expand_args(environ)
         process = subprocess.run(args, input=b'', check=True, stdout=subprocess.PIPE)
         output = process.stdout.decode().strip()
 
