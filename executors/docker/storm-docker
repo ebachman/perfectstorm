@@ -120,8 +120,6 @@ class DockerCommand:
 
 class DockerRecipeExecutor(RecipeExecutor):
 
-    agent_type = 'docker-deployer'
-
     def before_run(self):
         super().before_run()
 
@@ -158,8 +156,6 @@ class DockerRecipeExecutor(RecipeExecutor):
 
 
 class DockerDiscoveryExecutor(DiscoveryExecutor):
-
-    agent_type = 'docker-discovery'
 
     _url_prefix = 'http+unix://%2Fvar%2Frun%2Fdocker.sock/'
 
