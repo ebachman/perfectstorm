@@ -101,7 +101,7 @@ class Group(Model):
     name = StringField(primary_key=True)
 
     query = DictField()
-    services = DictField()
+    services = ListField(DictField())
 
     include = ListField(StringField())
     exclude = ListField(StringField())
@@ -137,7 +137,7 @@ class Recipe(Model):
     options = DictField()
     params = DictField()
 
-    target = StringField()
+    target = StringField(null=True)
 
     class Meta:
         path = '/v1/recipes/'
