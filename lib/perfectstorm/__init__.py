@@ -29,7 +29,9 @@
 from .api import (
     Agent,
     Application,
+    Collection,
     Group,
+    Model,
     Recipe,
     Resource,
     Trigger,
@@ -40,7 +42,9 @@ from .api import (
 __all__ = [
     'Agent',
     'Application',
+    'Collection',
     'Group',
+    'Model',
     'Recipe',
     'Resource',
     'Trigger',
