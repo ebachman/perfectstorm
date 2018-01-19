@@ -31,7 +31,7 @@ import abc
 import multiprocessing
 import time
 
-from ..entities import Agent
+from ..api import Agent
 
 
 class Executor(metaclass=abc.ABCMeta):

@@ -26,26 +26,53 @@
 # of the authors and should not be interpreted as representing official policies,
 # either expressed or implied, of the Perfect Storm Project.
 
-from .api import (
+from .base import Model, Collection, Manager
+from .heartbeat import Heartbeat
+from .session import (
+    DEFAULT_HOST,
+    DEFAULT_PORT,
+    Session,
+    connect,
+    current_session,
+)
+
+from .fields import (
+    DictField,
+    Field,
+    IntField,
+    ListField,
+    StringField,
+)
+
+from .models import (
     Agent,
     Application,
     Group,
     Recipe,
     Resource,
     Trigger,
-    connect,
 )
 
 
 __all__ = [
     'Agent',
     'Application',
+    'Collection',
+    'DEFAULT_HOST',
+    'DEFAULT_PORT',
+    'DictField',
+    'Field',
     'Group',
+    'Heartbeat',
+    'IntField',
+    'ListField',
+    'Manager',
+    'Model',
     'Recipe',
     'Resource',
+    'Session',
+    'StringField',
     'Trigger',
     'connect',
+    'current_session',
 ]
-
-version_info = (0, 1)
-__version__ = '0.1'

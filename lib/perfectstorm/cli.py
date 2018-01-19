@@ -34,7 +34,7 @@ import time
 import traceback
 
 from . import api
-from .entities import Agent
+from .api import Agent
 from .executors import RestartingProcessExecutorRunner
 
 

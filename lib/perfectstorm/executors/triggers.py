@@ -29,7 +29,7 @@
 
 import abc
 
-from ..entities import Trigger, Recipe
+from ..api import Trigger, Recipe
 from . import AgentExecutor, PollingExecutor
 
 

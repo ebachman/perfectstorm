@@ -31,8 +31,9 @@ import time
 import traceback
 from urllib.parse import urljoin
 
-from . import api, exceptions
-from .api import Model, Collection
+from ..exceptions import TriggerError
+from .base import Model, Collection
+from .fields import StringField, ListField, DictField
 from .heartbeat import Heartbeat
 
 
@@ -53,8 +54,8 @@ class Agent(Model):
         super().__init__(*args, **kwargs)
         self.heartbeat = Heartbeat(self)
 
-    id = api.StringField(primary_key=True)
-    type = api.StringField()
+    id = StringField(primary_key=True)
+    type = StringField()
 
     class Meta:
         path = '/v1/agents/'
@@ -62,14 +63,14 @@ class Agent(Model):
 
 class Resource(Model):
 
-    id = api.StringField(primary_key=True)
-    type = api.StringField()
-    names = api.ListField(api.StringField(), primary_key=True)
+    id = StringField(primary_key=True)
+    type = StringField()
+    names = ListField(StringField(), primary_key=True)
 
-    owner = api.StringField()
-    image = api.StringField(null=True)
-    host = api.StringField(null=True)
-    snapshot = api.DictField(null=True)
+    owner = StringField()
+    image = StringField(null=True)
+    host = StringField(null=True)
+    snapshot = DictField(null=True)
 
     class Meta:
         path = '/v1/resources/'
@@ -96,14 +97,14 @@ class GroupMembersCollection(Collection):
 
 class Group(Model):
 
-    id = api.StringField(primary_key=True)
-    name = api.StringField(primary_key=True)
+    id = StringField(primary_key=True)
+    name = StringField(primary_key=True)
 
-    query = api.DictField()
-    services = api.DictField()
+    query = DictField()
+    services = DictField()
 
-    include = api.ListField(api.StringField())
-    exclude = api.ListField(api.StringField())
+    include = ListField(StringField())
+    exclude = ListField(StringField())
 
     class Meta:
         path = '/v1/groups/'
@@ -115,12 +116,12 @@ class Group(Model):
 
 class Application(Model):
 
-    id = api.StringField(primary_key=True)
-    name = api.StringField(primary_key=True)
+    id = StringField(primary_key=True)
+    name = StringField(primary_key=True)
 
-    components = api.ListField(api.StringField())
-    links = api.DictField()
-    expose = api.ListField(api.StringField())
+    components = ListField(StringField())
+    links = DictField()
+    expose = ListField(StringField())
 
     class Meta:
         path = '/v1/apps/'
@@ -128,15 +129,15 @@ class Application(Model):
 
 class Recipe(Model):
 
-    id = api.StringField(primary_key=True)
-    name = api.StringField(primary_key=True)
-    type = api.StringField()
+    id = StringField(primary_key=True)
+    name = StringField(primary_key=True)
+    type = StringField()
 
-    content = api.StringField()
-    options = api.DictField()
-    params = api.DictField()
+    content = StringField()
+    options = DictField()
+    params = DictField()
 
-    target = api.StringField()
+    target = StringField()
 
     class Meta:
         path = '/v1/recipes/'
@@ -162,14 +163,14 @@ class TriggerHandler:
 
 class Trigger(Model):
 
-    id = api.StringField(primary_key=True)
-    type = api.StringField()
-    status = api.StringField()
+    id = StringField(primary_key=True)
+    type = StringField()
+    status = StringField()
 
-    arguments = api.DictField()
-    result = api.DictField()
+    arguments = DictField()
+    result = DictField()
 
-    created = api.StringField()
+    created = StringField()
 
     class Meta:
         path = 'v1/triggers/'
@@ -230,4 +231,4 @@ class Trigger(Model):
                 exc_info.get('traceback'),
             )
 
-        raise exceptions.TriggerError(self.identifier, trigger=self) from parent_exception
+        raise TriggerError(self.identifier, trigger=self) from parent_exception
