@@ -29,7 +29,6 @@
 
 import json
 import threading
-from urllib.parse import quote, urljoin
 
 from requests import HTTPError
 
@@ -88,7 +87,7 @@ class Collection:
                 params = {'q': json_compact(self.query)}
             else:
                 params = None
-            documents = self._session.get(self.model.Meta.path, params=params)
+            documents = self._session.get(self.model._path, params=params)
             self._elems = [self.model(doc, session=self._session) for doc in documents]
 
         return self._elems
@@ -133,7 +132,7 @@ class Manager:
     @property
     def url(self):
         session = self._session if self._session is not None else current_session()
-        return urljoin(session.api_root, self.model.Meta.path)
+        return session.api_root / self.model._path
 
     def all(self):
         return Collection(model=self.model, session=self._session)
@@ -243,7 +242,7 @@ class Model(metaclass=ModelMeta):
         object_id = self.pk
         if object_id is None:
             raise AttributeError('No ID has been set')
-        return urljoin(self.objects.url, quote(object_id))
+        return self.objects.url.join(object_id, quote=True)
 
     def reload(self, session=None):
         """Fetch the data from the API server for this object."""

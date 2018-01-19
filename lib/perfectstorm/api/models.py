@@ -29,7 +29,6 @@
 
 import time
 import traceback
-from urllib.parse import urljoin
 
 from ..exceptions import TriggerError
 from .base import Model, Collection
@@ -50,18 +49,19 @@ def json_exception(exc_value):
 
 class Agent(Model):
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.heartbeat = Heartbeat(self)
+    _path = 'v1/agents'
 
     id = StringField(primary_key=True)
     type = StringField()
 
-    class Meta:
-        path = '/v1/agents/'
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.heartbeat = Heartbeat(self)
 
 
 class Resource(Model):
+
+    _path = 'v1/resources'
 
     id = StringField(primary_key=True)
     type = StringField()
@@ -72,9 +72,6 @@ class Resource(Model):
     host = StringField(null=True)
     snapshot = DictField(null=True)
 
-    class Meta:
-        path = '/v1/resources/'
-
 
 class GroupMembersCollection(Collection):
 
@@ -84,7 +81,7 @@ class GroupMembersCollection(Collection):
 
     @property
     def url(self):
-        return urljoin(self.group.url, 'members/')
+        return self.group.url / 'members'
 
     def add(self, members):
         member_ids = [member.id for member in members]
@@ -97,6 +94,8 @@ class GroupMembersCollection(Collection):
 
 class Group(Model):
 
+    _path = 'v1/groups'
+
     id = StringField(primary_key=True)
     name = StringField(primary_key=True)
 
@@ -106,15 +105,14 @@ class Group(Model):
     include = ListField(StringField())
     exclude = ListField(StringField())
 
-    class Meta:
-        path = '/v1/groups/'
-
     def members(self, *args, **kwargs):
         query = dict(*args, **kwargs)
         return GroupMembersCollection(group=self, model=Resource, query=query, session=self._session)
 
 
 class Application(Model):
+
+    _path = 'v1/apps'
 
     id = StringField(primary_key=True)
     name = StringField(primary_key=True)
@@ -123,11 +121,10 @@ class Application(Model):
     links = DictField()
     expose = ListField(StringField())
 
-    class Meta:
-        path = '/v1/apps/'
-
 
 class Recipe(Model):
+
+    _path = 'v1/recipes'
 
     id = StringField(primary_key=True)
     name = StringField(primary_key=True)
@@ -138,9 +135,6 @@ class Recipe(Model):
     params = DictField()
 
     target = StringField(null=True)
-
-    class Meta:
-        path = '/v1/recipes/'
 
 
 class TriggerHandler:
@@ -163,6 +157,8 @@ class TriggerHandler:
 
 class Trigger(Model):
 
+    _path = 'v1/triggers'
+
     id = StringField(primary_key=True)
     type = StringField()
     status = StringField(default='pending')
@@ -171,9 +167,6 @@ class Trigger(Model):
     result = DictField()
 
     created = StringField(null=True)
-
-    class Meta:
-        path = 'v1/triggers/'
 
     def is_pending(self):
         return self.status == 'pending'
@@ -188,7 +181,7 @@ class Trigger(Model):
         return self.status == 'error'
 
     def handle(self, agent):
-        url = urljoin(self.url + '/', 'handle')
+        url = self.url / 'handle'
         self._session.post(url, json={'agent': agent.id})
         self.reload()
         return TriggerHandler(self)
@@ -196,12 +189,12 @@ class Trigger(Model):
     def complete(self, result=None, status='done'):
         if result is None:
             result = {}
-        url = urljoin(self.url + '/', 'complete')
+        url = self.url / 'complete'
         self._session.post(url, json={'result': result})
         self.reload()
 
     def fail(self, exception):
-        url = urljoin(self.url + '/', 'fail')
+        url = self.url / 'fail'
         result = {'exception': json_exception(exception)}
         self._session.post(url, json={'result': result})
         self.reload()

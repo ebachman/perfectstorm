@@ -28,7 +28,6 @@
 # either expressed or implied, of the Perfect Storm Project.
 
 import threading
-from urllib.parse import urljoin
 
 
 HEARTBEAT_DURATION = 60
@@ -76,7 +75,7 @@ class Heartbeat:
         self._thread = None
 
     def _post_heartbeat(self):
-        url = urljoin(self.instance.url + '/', 'heartbeat')
+        url = self.instance.url / 'heartbeat'
         self.instance._session.post(url)
 
     def start(self, interval=None):

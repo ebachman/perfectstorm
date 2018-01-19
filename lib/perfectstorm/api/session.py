@@ -27,7 +27,7 @@
 # either expressed or implied, of the Perfect Storm Project.
 
 import threading
-from urllib.parse import quote, urljoin
+import urllib.parse
 
 import requests
 
@@ -38,10 +38,6 @@ _local_sessions = threading.local()
 
 DEFAULT_HOST = '127.0.0.1'
 DEFAULT_PORT = 8000
-
-
-def appendslash(url):
-    return url if url.endswith('/') else url + '/'
 
 
 def current_session():
@@ -65,6 +61,40 @@ def connect(host=None, port=None):
     return session
 
 
+class UrlPath:
+
+    def __new__(cls, url):
+        if isinstance(url, UrlPath):
+            url = str(url)
+        if not isinstance(url, str):
+            raise TypeError('Expected a string or UrlPath object, got {!r}'.format(url))
+        return super().__new__(cls)
+
+    def __init__(self, url):
+        self._url = url.rstrip('/')
+
+    def join(self, path, quote=False):
+        if quote:
+            path = urllib.parse.quote(path)
+        else:
+            path = path.strip('/')
+        suburl = urllib.parse.urljoin(self._url + '/', path)
+        return self.__class__(suburl)
+
+    def __truediv__(self, other):
+        if isinstance(other, UrlPath):
+            other = str(other)
+        if not isinstance(other, str):
+            return NotImplemented
+        return self.join(other)
+
+    def __str__(self):
+        return self._url
+
+    def __repr__(self):
+        return '<{}: {}>'.format(self.__class__.__name__, str(self))
+
+
 class Session:
 
     def __init__(self, host=None, port=None):
@@ -72,13 +102,16 @@ class Session:
             host = DEFAULT_HOST
         if port is None:
             port = DEFAULT_PORT
-        self.api_root = 'http://%s:%d/' % (quote(host), port)
+        self.api_root = UrlPath('http://%s:%d/' % (urllib.parse.quote(host), port))
+
+    def _check_url(self, url):
+        root = str(self.api_root) + '/'
+        if not str(url).startswith(root):
+            raise RuntimeError('URL has been mangled: %r' % url)
 
     def request(self, method, path, **kwargs):
-        url = appendslash(urljoin(self.api_root, path))
-
-        if not url.startswith(self.api_root):
-            raise RuntimeError('URL has been mangled: %r' % url)
+        url = self.api_root / path
+        self._check_url(url)
 
         response = requests.request(method, url, **kwargs)
         response.raise_for_status()
