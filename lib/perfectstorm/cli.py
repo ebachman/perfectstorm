@@ -139,7 +139,7 @@ class AgentClient(DaemonClient):
         self.agent = None
 
 
-class ExecutorClient(AgentClient, CommandLineClient):
+class ExecutorClient(AgentClient):
 
     def get_executors(self):
         executor_classes = getattr(self, 'executor_classes', None)
