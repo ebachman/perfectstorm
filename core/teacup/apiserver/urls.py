@@ -34,7 +34,7 @@ from rest_framework_mongoengine.routers import DefaultRouter
 from teacup.apiserver import views
 
 
-router = DefaultRouter()
+router = DefaultRouter(trailing_slash=False)
 
 router.register(r'agents', views.AgentViewSet)
 router.register(r'resources', views.ResourceViewSet)
