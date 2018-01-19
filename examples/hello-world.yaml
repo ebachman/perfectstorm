@@ -1,0 +1,13 @@
+- group:
+    name: hello-world
+    query:
+      type: container
+      image:
+        $regex: ^(library/)?hello-world(:.*)$
+
+- recipe:
+    name: hello-world
+    type: docker
+    content: |
+      - CONTAINER_ID: run -d hello-world
+      - rm -f $CONTAINER_ID
