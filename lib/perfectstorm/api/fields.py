@@ -48,6 +48,9 @@ class Field:
         if self.primary_key:
             owner._primary_keys.append(name)
 
+    def embed(self, parent, name):
+        self.name = name
+
     def __get__(self, instance, owner):
         if instance is None:
             # This field is being accessed from the model class
@@ -93,6 +96,14 @@ class ListField(Field):
         kwargs.setdefault('default', list)
         super().__init__(**kwargs)
         self.subfield = subfield
+
+    def __set_name__(self, owner, name):
+        super().__set_name__(owner, name)
+        self.subfield.embed(self, name + '.[]')
+
+    def embed(self, parent, name):
+        super().embed(parent, name)
+        self.subfield.embed(self, name + '.[]')
 
     def validate(self, value):
         super().validate(value)
