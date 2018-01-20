@@ -66,10 +66,15 @@ class Resource(Model):
     id = StringField(primary_key=True)
     type = StringField()
     names = ListField(StringField(), primary_key=True)
-
     owner = StringField()
+
     image = StringField(null=True)
     parent = StringField(null=True)
+
+    status = StringField(default='unknown')
+    health = StringField(default='unknown')
+    state = StringField(read_only=True)
+
     snapshot = DictField(null=True)
 
 

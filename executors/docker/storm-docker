@@ -38,7 +38,7 @@ import yaml
 import requests_unixsocket
 
 from perfectstorm import Resource
-from perfectstorm.cli import DaemonClient, ExecutorClient
+from perfectstorm.cli import ExecutorClient
 from perfectstorm.executors import DiscoveryExecutor, RecipeExecutor
 
 
@@ -250,6 +250,7 @@ class DockerDiscoveryExecutor(DiscoveryExecutor):
             type='docker-daemon',
             names=names,
             owner=self.agent.id,
+            status='running',
             snapshot=data,
         )
 
@@ -259,12 +260,34 @@ class DockerDiscoveryExecutor(DiscoveryExecutor):
         names = [data['Id']]
         names.extend(name.lstrip('/') for name in data['Names'])
 
+        docker2storm_status = {
+            'created': 'created',
+            'restarting': 'starting',
+            'running': 'running',
+            'removing': 'removing',
+            'paused': 'stopped',
+            'exited': 'stopped',
+            'dead': 'error',
+        }
+
+        docker2storm_health = {
+            'starting': 'unknown',
+            'healthy': 'healthy',
+            'unhealthy': 'unhealthy',
+            'none': 'unknown',
+        }
+
+        status = docker2storm_status.get(data.get('State'), 'unknown')
+        health = docker2storm_health.get(data.get('Health'), 'unknown')
+
         resource = Resource(
             type='container',
             names=names,
             owner=self.agent.id,
             image=data['Image'],
             parent=self.snapshot.info['ID'],
+            status=status,
+            health=health,
             snapshot=data,
         )
 

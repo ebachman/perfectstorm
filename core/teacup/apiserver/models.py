@@ -213,6 +213,32 @@ class Agent(TypeMixin, Document):
 
 class Resource(TypeMixin, Document):
 
+    STATUS_CHOICES = (
+        ('unknown', 'Unknown'),
+        ('creating', 'Creating'),
+        ('created', 'Created'),
+        ('starting', 'Starting'),
+        ('running', 'Running'),
+        ('stopping', 'Stopped'),
+        ('stopped', 'Stopped'),
+        ('error', 'Error'),
+        ('removing', 'Removing'),
+    )
+
+    HEALTH_CHOICES = (
+        ('unknown', 'Unknown'),
+        ('healthy', 'Healthy'),
+        ('unhealthy', 'Unhealthy'),
+    )
+
+    STATE_CHOICES = (
+        ('unknown', 'Unknown'),
+        ('running', 'Running (Healthy)'),
+        ('running-unhealthy', 'Running (Unhealthy)'),
+        ('not-running', 'Not Running'),
+        ('error', 'Error'),
+    )
+
     id = FancyIdField('resource')
     names = ListField(StringField(min_length=1), min_length=1, required=True)
     owner = ReferenceField(Agent, required=True)
@@ -220,14 +246,36 @@ class Resource(TypeMixin, Document):
     parent = StringField(min_length=1, null=True)
     image = StringField(min_length=1, null=True)
 
+    status = StringField(choices=STATUS_CHOICES, required=True)
+    health = StringField(choices=HEALTH_CHOICES, default='unknown', required=True)
+    state = StringField(choices=STATE_CHOICES, required=True)
+
     snapshot = EscapedDynamicField()
 
     meta = {
         'indexes': [
             'names',
             'owner',
+            'state',
         ],
     }
+
+    def clean(self):
+        super().clean()
+        self.update_state()
+
+    def update_state(self):
+        if self.status in (None, 'unknown'):
+            self.state = 'unknown'
+        elif self.status == 'running':
+            if self.health in ('unknown', 'healthy'):
+                self.state = 'running'
+            else:
+                self.state = 'running-unhealthy'
+        elif self.status == 'error':
+            self.state = 'error'
+        else:
+            self.state = 'not-running'
 
     def __str__(self):
         return self.names[0] if self.names else str(self.pk)
