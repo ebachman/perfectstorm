@@ -30,9 +30,7 @@
 import json
 import threading
 
-from requests import HTTPError
-
-from ..exceptions import ObjectNotFound, MultipleObjectsReturned
+from ..exceptions import APINotFoundError, ObjectNotFound, MultipleObjectsReturned
 from .session import current_session
 
 
@@ -264,10 +262,8 @@ class Model(metaclass=ModelMeta):
             session = self._session
         try:
             response_data = session.get(self.url)
-        except HTTPError as exc:
-            if exc.status_code == 404:
-                raise ObjectNotFound(self.pk)
-            raise
+        except APINotFoundError as exc:
+            raise ObjectNotFound(self.pk)
         self._data = response_data
 
     def save(self, validate=True, session=None):
@@ -301,10 +297,8 @@ class Model(metaclass=ModelMeta):
     def _update(self, session):
         try:
             response_data = session.put(self.url, json=self._data)
-        except HTTPError as exc:
-            if exc.response.status_code == 404:
-                raise ObjectNotFound(self.pk)
-            raise
+        except APINotFoundError as exc:
+            raise ObjectNotFound(self.pk)
         self._data = response_data
 
     def delete(self, session=None):
@@ -314,10 +308,8 @@ class Model(metaclass=ModelMeta):
 
         try:
             session.delete(self.url)
-        except HTTPError as exc:
-            if exc.response.status_code == 404:
-                raise ObjectNotFound(self.pk)
-            raise
+        except APINotFoundError as exc:
+            raise ObjectNotFound(self.pk)
 
     def validate(self, skip_fields=None):
         cls = self.__class__

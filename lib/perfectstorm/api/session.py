@@ -31,6 +31,9 @@ import threading
 import urllib.parse
 
 import requests
+from requests.exceptions import RequestException
+
+from .. import exceptions
 
 
 log = logging.getLogger(__name__)
@@ -131,12 +134,49 @@ class Session:
         url = self.api_root / path
         self._check_url(url)
 
-        response = requests.request(method, url, **kwargs)
-        log.info('%s %s -> %s %s', method.upper(), url, response.status_code, response.reason)
-        response.raise_for_status()
+        try:
+            try:
+                response = requests.request(method, url, **kwargs)
+                response.raise_for_status()
+            except requests.exceptions.RequestException as exc:
+                raise self.wrap_exception(exc)
+        except exceptions.APIRequestError as exc:
+            log.error('%s', exc)
+            raise
+
+        request = response.request
+        log.info('%s %s -> %s %s', request.method, request.url, response.status_code, response.reason)
 
         if response.status_code != 204:
             return response.json()
+
+    def wrap_exception(self, exc):
+        root_cause = exc
+        while root_cause.__context__ is not None:
+            root_cause = root_cause.__context__
+
+        exc_args = ()
+        request = getattr(exc, 'request')
+        response = getattr(exc, 'response')
+
+        if isinstance(root_cause, OSError) and not isinstance(root_cause, RequestException):
+            if isinstance(root_cause, ConnectionError):
+                exc_type = exceptions.APIConnectionError
+            elif isinstance(root_cause, IOError):
+                exc_type = exceptions.APIIOError
+            else:
+                exc_type = exceptions.APIOSError
+            exc_args = (root_cause.errno, root_cause.strerror)
+        else:
+            status_code = getattr(response, 'status_code', None)
+            if status_code == 404:
+                exc_type = exceptions.APINotFoundError
+            elif status_code == 409:
+                exc_type = exceptions.APIConflictError
+            else:
+                exc_type = exceptions.APIRequestError
+
+        return exc_type(*exc_args, request=request, response=response)
 
     def get(self, url, **kwargs):
         return self.request('get', url, **kwargs)
