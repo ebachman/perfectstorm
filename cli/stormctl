@@ -142,6 +142,7 @@ class EntityCommand(Command):
 class SingleEntityCommand(EntityCommand):
 
     def add_arguments(self, parser):
+        super().add_arguments(parser)
         parser.add_argument('id')
 
     def get_object(self, client, model):
@@ -153,6 +154,7 @@ class SingleEntityCommand(EntityCommand):
 class MultipleEntitiesCommand(EntityCommand):
 
     def add_arguments(self, parser):
+        super().add_arguments(parser)
         parser.add_argument('id', nargs='+')
 
     def iter_objects(self, client, model):
@@ -168,14 +170,14 @@ class EntityImporter:
         model(**data).save()
 
 
-class EntityListCommand(EntityCommand):
+class ListCommandMixin:
 
-    command_name = 'ls'
-
-    def __init__(self, columns):
+    def __init__(self, columns, **kwargs):
+        super().__init__(**kwargs)
         self.columns = columns
 
     def add_arguments(self, parser):
+        super().add_arguments(parser)
         parser.add_argument('-q', '--quiet', action='store_true')
 
     def __call__(self, client, model):
@@ -197,6 +199,11 @@ class EntityListCommand(EntityCommand):
             for obj in queryset
         ]
         print_table(header, rows)
+
+
+class EntityListCommand(ListCommandMixin, EntityCommand):
+
+    command_name = 'ls'
 
 
 class EntityGetCommand(SingleEntityCommand):
@@ -254,6 +261,7 @@ class ImportCommand(TopLevelCommand):
     command_name = 'import'
 
     def add_arguments(self, parser):
+        super().add_arguments(parser)
         parser.add_argument('-f', '--file', type=argparse.FileType(), required=True)
 
     def __call__(self, client):
@@ -363,6 +371,15 @@ class ApplicationHandler(EntityHandler):
     importer = ApplicationImporter()
 
 
+class ListGroupMembersCommand(ListCommandMixin, SingleEntityCommand):
+
+    command_name = 'members'
+
+    def get_queryset(self, client, model):
+        obj = self.get_object(client, model)
+        return obj.members()
+
+
 class GroupHandler(EntityHandler):
 
     model = Group
@@ -374,6 +391,11 @@ class GroupHandler(EntityHandler):
             ('NAME', get_object_name),
         ]),
         EntityGetCommand(),
+        ListGroupMembersCommand([
+            ('ID', get_object_id),
+            ('TYPE', get_object_type),
+            ('NAMES', get_object_name),
+        ]),
         EntityRemoveCommand(),
     ]
 
@@ -418,6 +440,7 @@ class TriggerRunCommand(EntityCommand):
     command_name = 'run'
 
     def add_arguments(self, parser):
+        super().add_arguments(parser)
         parser.add_argument('-d', '--detach', action='store_true')
         parser.add_argument('-k', '--keep', action='store_true')
         parser.add_argument('-t', '--type', required=True)
