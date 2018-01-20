@@ -29,6 +29,7 @@
 
 import abc
 import argparse
+import logging.config
 import sys
 import time
 import traceback
@@ -61,6 +62,8 @@ class CommandLineClient(metaclass=abc.ABCMeta):
     def setup(self):
         self.parse_arguments()
         self.connect_api()
+        if self.options.debug:
+            self.enable_debug()
 
     def teardown(self):
         pass
@@ -86,11 +89,39 @@ class CommandLineClient(metaclass=abc.ABCMeta):
         parser.add_argument(
             '-C', '--connect', metavar='HOST[:PORT]', default=default_addr,
             help='Address to the Perfect Storm API server (default: {})'.format(default_addr))
+        parser.add_argument(
+            '-D', '--debug', action='store_true',
+            help='Show debug logs')
 
     def connect_api(self):
         host, port = self.options.connect.rsplit(':', 1)
         port = int(port)
         api.connect(host, port)
+
+    def enable_debug(self):
+        logging.config.dictConfig({
+            'version': 1,
+            'disable_existing_loggers': False,
+            'formatters': {
+                'standard': {
+                    'format': '[%(levelname)s] %(message)s'
+                },
+            },
+            'handlers': {
+                'default': {
+                    'level': 'INFO',
+                    'formatter': 'standard',
+                    'class': 'logging.StreamHandler',
+                },
+            },
+            'loggers': {
+                'perfectstorm': {
+                    'handlers': ['default'],
+                    'level': 'INFO',
+                    'propagate': True
+                },
+            },
+        })
 
 
 class DaemonClient(CommandLineClient):
