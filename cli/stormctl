@@ -33,6 +33,7 @@ import collections
 import functools
 import re
 import sys
+from operator import attrgetter
 
 import yaml
 
@@ -170,7 +171,9 @@ class EntityImporter:
         model(**data).save()
 
 
-class ListCommandMixin:
+class EntityListCommand(EntityCommand):
+
+    command_name = 'ls'
 
     def __init__(self, columns, **kwargs):
         super().__init__(**kwargs)
@@ -201,9 +204,27 @@ class ListCommandMixin:
         print_table(header, rows)
 
 
-class EntityListCommand(ListCommandMixin, EntityCommand):
+class ResourceListCommand(EntityListCommand):
 
-    command_name = 'ls'
+    def __init__(self, *args, **kwargs):
+        columns = [
+            ('ID', get_object_id),
+            ('TYPE', get_object_type),
+            ('NAMES', get_object_name),
+            ('STATUS', attrgetter('status')),
+            ('HEALTH', attrgetter('health')),
+            ('STATE', attrgetter('state')),
+        ]
+        super().__init__(*args, columns=columns, **kwargs)
+
+
+class ListGroupMembersCommand(ResourceListCommand, SingleEntityCommand):
+
+    command_name = 'members'
+
+    def get_queryset(self, client, model):
+        obj = self.get_object(client, model)
+        return obj.members()
 
 
 class EntityGetCommand(SingleEntityCommand):
@@ -371,15 +392,6 @@ class ApplicationHandler(EntityHandler):
     importer = ApplicationImporter()
 
 
-class ListGroupMembersCommand(ListCommandMixin, SingleEntityCommand):
-
-    command_name = 'members'
-
-    def get_queryset(self, client, model):
-        obj = self.get_object(client, model)
-        return obj.members()
-
-
 class GroupHandler(EntityHandler):
 
     model = Group
@@ -391,11 +403,7 @@ class GroupHandler(EntityHandler):
             ('NAME', get_object_name),
         ]),
         EntityGetCommand(),
-        ListGroupMembersCommand([
-            ('ID', get_object_id),
-            ('TYPE', get_object_type),
-            ('NAMES', get_object_name),
-        ]),
+        ListGroupMembersCommand(),
         EntityRemoveCommand(),
     ]
 
@@ -426,11 +434,7 @@ class ResourceHandler(EntityHandler):
     entity_name = 'resource'
 
     commands = [
-        EntityListCommand([
-            ('ID', get_object_id),
-            ('TYPE', get_object_type),
-            ('NAMES', get_object_name),
-        ]),
+        ResourceListCommand(),
         EntityGetCommand(),
     ]
 
