@@ -319,6 +319,28 @@ class ImportCommand(TopLevelCommand):
 
 class ApplicationImporter(EntityImporter):
 
+    _component_link_re = re.compile(
+        r"""
+        ^\s*
+        ([\w._-]+)                  # Source component
+        (?:
+            \s*=>\s*                # Arrow (=>)
+            ([\w._-]+)\s*           # Destination component
+            \[\s*([\w._-]+)\s*\]    # Destination service
+        )?
+        \s*$
+        """,
+        re.VERBOSE)
+
+    _exposed_service_re = re.compile(
+        r"""
+        ^\s*
+        ([\w._-]+)\s*           # Component
+        \[\s*([\w._-]+)\s*\]    # Service
+        \s*$
+        """,
+        re.VERBOSE)
+
     def __call__(self, client, data, model):
         api_data = self.parse(data)
         super().__call__(client, api_data, model)
@@ -336,8 +358,13 @@ class ApplicationImporter(EntityImporter):
             for link_spec in data['components']:
                 src_component, dest_component, dest_service = self.parse_component_link(link_spec)
                 components.add(src_component)
-                components.add(dest_component)
-                links.append({'src_component': src_component, 'dest_component': dest_component, 'dest_service': dest_service})
+                if dest_component:
+                    components.add(dest_component)
+                    links.append({
+                        'src_component': src_component,
+                        'dest_component': dest_component,
+                        'dest_service': dest_service,
+                    })
 
             result['components'] = list(components)
             result['links'] = links
@@ -354,12 +381,10 @@ class ApplicationImporter(EntityImporter):
         return result
 
     def parse_component_link(self, link_spec):
-        match = re.match(r'^\s*([\w._-]+)\s*=>\s*([\w._-]+)\s*\[\s*([\w._-]+)\s*\]\s*$', link_spec)
-        return match.groups()
+        return self._component_link_re.match(link_spec).groups()
 
     def parse_exposed_service(self, service_spec):
-        match = re.match(r'^\s*([\w._-]+)\s*\[\s*([\w._-]+)\s*\]\s*$', service_spec)
-        return match.groups()
+        return self._exposed_service_re.match(service_spec).groups()
 
 
 class AgentHandler(EntityHandler):

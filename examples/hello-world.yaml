@@ -5,6 +5,11 @@
       image:
         $regex: ^(library/)?hello-world(:.+)?$
 
+- application:
+    name: hello-world
+    components:
+      - hello-world
+
 - recipe:
     name: hello-world
     type: docker
