@@ -123,6 +123,9 @@ class DictField(Field):
     def validate(self, value):
         super().validate(value)
 
+        if value is not None and not isinstance(value, dict):
+            raise ValidationError('expected a dict, got %r' % value, field=self.name)
+
         visited = set()
 
         def validate_inner(obj):
