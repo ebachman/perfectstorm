@@ -3,7 +3,7 @@
     query:
       type: container
       image:
-        $regex: ^(library/)?hello-world(:.*)$
+        $regex: ^(library/)?hello-world(:.+)?$
 
 - recipe:
     name: hello-world
