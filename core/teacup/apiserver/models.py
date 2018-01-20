@@ -217,7 +217,7 @@ class Resource(TypeMixin, Document):
     names = ListField(StringField(min_length=1), min_length=1, required=True)
     owner = ReferenceField(Agent, required=True)
 
-    host = StringField(min_length=1, null=True)
+    parent = StringField(min_length=1, null=True)
     image = StringField(min_length=1, null=True)
 
     snapshot = EscapedDynamicField()

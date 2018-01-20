@@ -69,7 +69,7 @@ class Resource(Model):
 
     owner = StringField()
     image = StringField(null=True)
-    host = StringField(null=True)
+    parent = StringField(null=True)
     snapshot = DictField(null=True)
 
 

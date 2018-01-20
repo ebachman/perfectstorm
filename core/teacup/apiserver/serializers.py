@@ -80,7 +80,7 @@ class ResourceSerializer(DocumentSerializer):
 
     class Meta:
         model = Resource
-        fields = ('id', 'type', 'names', 'owner', 'host', 'image', 'snapshot')
+        fields = ('id', 'type', 'names', 'owner', 'parent', 'image', 'snapshot')
 
 
 class GroupSerializer(DocumentSerializer):

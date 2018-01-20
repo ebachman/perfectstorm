@@ -187,7 +187,7 @@ class DockerDiscoveryExecutor(DiscoveryExecutor):
         for resource in Resource.objects.all():
             if self.docker_host_id in resource.names:
                 info = resource.snapshot
-            elif resource.host == self.docker_host_id:
+            elif resource.parent == self.docker_host_id:
                 containers[resource.id] = resource.snapshot
 
         return DockerSnapshot(info, containers)
@@ -264,7 +264,7 @@ class DockerDiscoveryExecutor(DiscoveryExecutor):
             names=names,
             owner=self.agent.id,
             image=data['Image'],
-            host=self.snapshot.info['ID'],
+            parent=self.snapshot.info['ID'],
             snapshot=data,
         )
 
