@@ -26,11 +26,14 @@
 # of the authors and should not be interpreted as representing official policies,
 # either expressed or implied, of the Perfect Storm Project.
 
+import logging
 import threading
 import urllib.parse
 
 import requests
 
+
+log = logging.getLogger(__name__)
 
 _lock = threading.RLock()
 _global_session = None
@@ -129,6 +132,7 @@ class Session:
         self._check_url(url)
 
         response = requests.request(method, url, **kwargs)
+        log.info('%s %s -> %s %s', method.upper(), url, response.status_code, response.reason)
         response.raise_for_status()
 
         if response.status_code != 204:
