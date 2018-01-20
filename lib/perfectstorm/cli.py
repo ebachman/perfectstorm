@@ -109,7 +109,7 @@ class CommandLineClient(metaclass=abc.ABCMeta):
             },
             'handlers': {
                 'default': {
-                    'level': 'INFO',
+                    'level': 'DEBUG',
                     'formatter': 'standard',
                     'class': 'logging.StreamHandler',
                 },
@@ -117,7 +117,7 @@ class CommandLineClient(metaclass=abc.ABCMeta):
             'loggers': {
                 'perfectstorm': {
                     'handlers': ['default'],
-                    'level': 'INFO',
+                    'level': 'DEBUG',
                     'propagate': True
                 },
             },
