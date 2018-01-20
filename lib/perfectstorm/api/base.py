@@ -52,8 +52,26 @@ class Collection:
         self._elems = None
         self._lock = threading.RLock()
 
+    def _replace(self, **kwargs):
+        kwargs.setdefault('model', self.model)
+        kwargs.setdefault('query', self.query)
+        kwargs.setdefault('session', self._session)
+        return self.__class__(**kwargs)
+
+    @property
+    def base_url(self):
+        return self._session.api_root / self.model._path
+
+    @property
+    def url(self):
+        if self.query:
+            params = {'q': json_compact(self.query)}
+        else:
+            params = {}
+        return self.base_url.params(params)
+
     def all(self):
-        return self.__class__(model=self.model, query=self.query, session=self._session)
+        return self._replace()
 
     def filter(self, *args, **kwargs):
         query = dict(*args, **kwargs)
@@ -61,7 +79,7 @@ class Collection:
             query = self.query
         elif self.query:
             query = {'$and': [self.query, query]}
-        return self.__class__(model=self.model, query=query, session=self._session)
+        return self._replace(query=query)
 
     def __iter__(self):
         self._retrieve()
@@ -83,11 +101,7 @@ class Collection:
             if self._elems is not None:
                 return self._elems
 
-            if self.query:
-                params = {'q': json_compact(self.query)}
-            else:
-                params = None
-            documents = self._session.get(self.model._path, params=params)
+            documents = self._session.get(self.url)
             self._elems = [self.model(doc, session=self._session) for doc in documents]
 
         return self._elems
@@ -124,10 +138,10 @@ class Manager:
         self.model = model
         self._session = session
 
-    def __call__(self, session=None):
-        if session is None:
-            session = self._session
-        return self.__class__(model=self.model, session=session)
+    def _replace(self, **kwargs):
+        kwargs.setdefault('model', self.model)
+        kwargs.setdefault('session', self._session)
+        return self.__class__(**kwargs)
 
     @property
     def url(self):

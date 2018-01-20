@@ -79,8 +79,12 @@ class GroupMembersCollection(Collection):
         super().__init__(*args, **kwargs)
         self.group = group
 
+    def _replace(self, **kwargs):
+        kwargs.setdefault('group', self.group)
+        return super()._replace(**kwargs)
+
     @property
-    def url(self):
+    def base_url(self):
         return self.group.url / 'members'
 
     def add(self, members):

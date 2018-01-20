@@ -81,6 +81,21 @@ class UrlPath:
         suburl = urllib.parse.urljoin(self._url + '/', path)
         return self.__class__(suburl)
 
+    def params(self, *args, **kwargs):
+        new_query_params = dict(*args, **kwargs)
+        if not new_query_params:
+            return self
+
+        parsed_url = urllib.parse.urlparse(self._url)
+        query_params = urllib.parse.parse_qsl(parsed_url.query)
+        query_params.extend(new_query_params.items())
+        query_string = urllib.parse.urlencode(query_params)
+
+        parsed_url = parsed_url._replace(query=query_string)
+        url = urllib.parse.urlunparse(parsed_url)
+
+        return self.__class__(url)
+
     def __truediv__(self, other):
         if isinstance(other, UrlPath):
             other = str(other)
