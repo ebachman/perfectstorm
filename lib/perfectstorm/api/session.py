@@ -142,6 +142,8 @@ class Session:
                 raise self.wrap_exception(exc)
         except exceptions.APIRequestError as exc:
             log.error('%s', exc)
+            if log.isEnabledFor(logging.DEBUG) and exc.response is not None:
+                log.debug('Response body: %s', exc.response.text)
             raise
 
         request = response.request
