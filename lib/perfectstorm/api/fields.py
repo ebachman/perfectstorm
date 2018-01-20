@@ -31,7 +31,8 @@ from ..exceptions import ValidationError
 
 class Field:
 
-    def __init__(self, *, primary_key=False, null=False, default=None):
+    def __init__(self, *, read_only=False, primary_key=False, null=False, default=None):
+        self.read_only = read_only
         self.primary_key = primary_key
         self.null = null
         self.default = default

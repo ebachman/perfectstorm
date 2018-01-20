@@ -317,8 +317,9 @@ class Model(metaclass=ModelMeta):
             if skip_fields is not None and name in skip_fields:
                 continue
             field = getattr(cls, name)
-            value = getattr(self, name)
-            field.validate(value)
+            if not field.read_only:
+                value = getattr(self, name)
+                field.validate(value)
 
     def __str__(self):
         return str(self.pk)
