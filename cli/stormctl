@@ -29,7 +29,6 @@
 
 import abc
 import argparse
-import collections
 import functools
 import re
 import sys
@@ -45,14 +44,16 @@ from perfectstorm import (
     Resource,
     Trigger,
 )
+from perfectstorm.api import Model
 from perfectstorm.cli import CommandLineClient
 
 
-def _dict_representer(dumper, data):
-    return dumper.represent_dict(data.items())
+def _model_representer(dumper, obj):
+    items = [(name, getattr(obj, name)) for name in obj._fields]
+    return dumper.represent_dict(items)
 
 
-yaml.add_representer(collections.OrderedDict, _dict_representer)
+yaml.add_multi_representer(Model, _model_representer)
 
 
 def yaml_load(arg):
@@ -233,12 +234,7 @@ class EntityGetCommand(SingleEntityCommand):
 
     def __call__(self, client, model):
         obj = self.get_object(client, model)
-
-        data = collections.OrderedDict()
-        for name in obj._fields:
-            data[name] = getattr(obj, name)
-
-        yaml_dump(data)
+        yaml_dump(obj)
 
 
 class EntityRemoveCommand(MultipleEntitiesCommand):
