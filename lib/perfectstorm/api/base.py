@@ -27,6 +27,7 @@
 # of the authors and should not be interpreted as representing official policies,
 # either expressed or implied, of the Perfect Storm Project.
 
+import abc
 import json
 import threading
 
@@ -39,11 +40,44 @@ def json_compact(*args, **kwargs):
     return json.dumps(*args, **kwargs)
 
 
-class Collection:
+class AbstractCollection(metaclass=abc.ABCMeta):
+
+    def __init__(self, model):
+        self.model = model
+
+    @abc.abstractmethod
+    def all(self):
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    def filter(self, *args, **kwargs):
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    def get(self, *args, **kwargs):
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    def __iter__(self):
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    def __len__(self):
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    def __getitem__(self, index):
+        raise NotImplementedError
+
+    def __repr__(self):
+        return '<%s: %s>' % (self.__class__.__name__, self.model.__name__)
+
+
+class Collection(AbstractCollection):
 
     def __init__(self, model, query=None, session=None):
-        self.model = model
-        self.query = query
+        super().__init__(model=model)
+        self._query = query
         if session is None:
             session = current_session()
         self._session = session
@@ -52,7 +86,7 @@ class Collection:
 
     def _replace(self, **kwargs):
         kwargs.setdefault('model', self.model)
-        kwargs.setdefault('query', self.query)
+        kwargs.setdefault('query', self._query)
         kwargs.setdefault('session', self._session)
         return self.__class__(**kwargs)
 
@@ -62,8 +96,8 @@ class Collection:
 
     @property
     def url(self):
-        if self.query:
-            params = {'q': json_compact(self.query)}
+        if self._query:
+            params = {'q': json_compact(self._query)}
         else:
             params = {}
         return self.base_url.params(params)
@@ -74,10 +108,32 @@ class Collection:
     def filter(self, *args, **kwargs):
         query = dict(*args, **kwargs)
         if not query:
-            query = self.query
-        elif self.query:
-            query = {'$and': [self.query, query]}
+            query = self._query
+        elif self._query:
+            query = {'$and': [self._query, query]}
         return self._replace(query=query)
+
+    def get(self, *args, **kwargs):
+        query = dict(*args, **kwargs)
+
+        if query:
+            it = iter(self.filter(query))
+        else:
+            it = iter(self)
+
+        try:
+            obj = next(it)
+        except StopIteration:
+            raise ObjectNotFound('%s matching query does not exist' % self.model.__name__)
+
+        try:
+            next(it)
+        except StopIteration:
+            pass
+        else:
+            raise MultipleObjectsReturned('Multiple objects returned instead of 1')
+
+        return obj
 
     def __iter__(self):
         self._retrieve()
@@ -104,30 +160,31 @@ class Collection:
 
         return self._elems
 
-    def get(self, *args, **kwargs):
-        query = dict(*args, **kwargs)
-
-        if query:
-            it = iter(self.filter(query))
-        else:
-            it = iter(self)
-
-        try:
-            obj = next(it)
-        except StopIteration:
-            raise ObjectNotFound('%s matching query does not exist' % self.model.__name__)
-
-        try:
-            next(it)
-        except StopIteration:
-            pass
-        else:
-            raise MultipleObjectsReturned('Multiple objects returned instead of 1')
-
-        return obj
-
     def __repr__(self):
         return '<%s: %s>' % (self.__class__.__name__, self.model.__name__)
+
+
+class EmptyCollection(AbstractCollection):
+
+    def all(self):
+        return self
+
+    def filter(self, *args, **kwargs):
+        return self
+
+    def get(self, *args, **kwargs):
+        raise ObjectNotFound
+
+    def __iter__(self):
+        return iter([])
+
+    def __len__(self):
+        return 0
+
+    def __getitem__(self, index):
+        if isinstance(index, slice):
+            return []
+        raise IndexError(index)
 
 
 class Manager:
@@ -145,6 +202,9 @@ class Manager:
     def url(self):
         session = self._session if self._session is not None else current_session()
         return session.api_root / self.model._path
+
+    def none(self):
+        return EmptyCollection(model=self.model)
 
     def all(self):
         return Collection(model=self.model, session=self._session)
