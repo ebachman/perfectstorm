@@ -1,0 +1,414 @@
+#!/usr/bin/env python3
+# Copyright (c) 2017, Composure.ai
+# Copyright (c) 2018, Andrea Corbellini
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+#
+# 1. Redistributions of source code must retain the above copyright notice, this
+#    list of conditions and the following disclaimer.
+#
+# 2. Redistributions in binary form must reproduce the above copyright notice,
+#    this list of conditions and the following disclaimer in the documentation
+#    and/or other materials provided with the distribution.
+#
+# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+#
+# The views and conclusions contained in the software and documentation are those
+# of the authors and should not be interpreted as representing official policies,
+# either expressed or implied, of the Perfect Storm Project.
+
+import collections
+import re
+import shlex
+import subprocess
+
+import yaml
+
+import requests
+
+from perfectstorm import Resource
+from perfectstorm.cli import ExecutorClient
+from perfectstorm.executors import DiscoveryExecutor, ProcedureExecutor
+
+
+_var_re = re.compile(r'(?<!\$)\$(\w+|{[^}]*})')
+_image_re = re.compile(r'^(?:(.+)/)?(.+)(?::(.+))?(?:@(.+))$')
+_cluster_id_re = re.compile(r'^ ClusterID: (.+)$', re.MULTILINE)
+
+DockerSnapshot = collections.namedtuple('DockerSnapshot', 'info services tasks')
+
+
+class DockerCommand:
+
+    def __init__(self, address, args):
+        var = None
+        err = False
+
+        if isinstance(args, dict):
+            if len(args) == 1:
+                var, args = args.popitem()
+
+        if isinstance(args, str):
+            args = shlex.split(args)
+
+        if not isinstance(args, list):
+            err = True
+
+        if not err:
+            if var is not None and not isinstance(var, str):
+                err = True
+            if not all(isinstance(arg, str) for arg in args):
+                err = True
+
+        if err:
+            raise TypeError('args must be a string, a list of strings or a dictionary containing a single item')
+
+        if len(args) < 1:
+            raise ValueError('Empty command')
+
+        self.var = var
+        self.cmd = args[0]
+        self.args = args[1:]
+        self.address = address
+
+    def expand_args(self, environ):
+        expanded_args = []
+
+        for arg in self.args:
+            expanded = ''
+
+            while arg:
+                match = _var_re.search(arg)
+                if match is None:
+                    expanded += arg
+                    break
+                start, end = match.span()
+                expanded += arg[:start]
+                var = match.group(1)
+                if var[0] == '{':
+                    var = var[1:-1]
+                expanded += environ.get(var, '')
+                arg = arg[end+1:]
+
+            expanded_args.append(expanded)
+
+        return expanded_args
+
+    def run(self, environ=None):
+        if environ is None:
+            environ = {}
+
+        args = ['docker', '--host', self.address, self.cmd] + self.expand_args(environ)
+        process = subprocess.run(args, input=b'', check=True, stdout=subprocess.PIPE)
+        output = process.stdout.decode().strip()
+
+        if self.var is not None:
+            environ[self.var] = output
+
+        return output
+
+
+class DockerExecutorMixin:
+
+    def __init__(self, agent, docker_address, **kwargs):
+        super().__init__(agent, **kwargs)
+        self.docker_address = docker_address
+
+
+class SwarmProcedureExecutor(DockerExecutorMixin, ProcedureExecutor):
+
+    def _command(self, args):
+        return DockerCommand(self.docker_address, args)
+
+    def before_run(self):
+        super().before_run()
+
+        cmd = self._command(['info'])
+        info = cmd.run()
+
+        match = _cluster_id_re.search(info)
+        if not match:
+            raise RuntimeError('Could not find Swarm Cluster ID')
+
+        cluster_id = match.group(1)
+        self.cluster_resource = Resource.objects.get(names=cluster_id)
+
+    def get_pending_triggers(self):
+        qs = super().get_pending_triggers()
+        return qs.filter({
+            'target': self.cluster_resource.id,
+        })
+
+    def get_procedure(self, trigger):
+        procedure = super().get_procedure(trigger)
+        commands = yaml.safe_load(procedure.content)
+        if not isinstance(commands, list):
+            raise TypeError('Procedure content is expected to be a list of commands')
+        self.commands = [self._command(item) for item in commands]
+        return procedure
+
+    def run_procedure(self, procedure):
+        environ = dict(procedure.params)
+        for command in self.commands:
+            command.run(environ)
+
+
+class SwarmDiscoveryExecutor(DockerExecutorMixin, DiscoveryExecutor):
+
+    def _get_json(self, path):
+        url = 'http://{}/{}'.format(self.docker_address, path.lstrip('/'))
+        response = requests.get(url)
+        response.raise_for_status()
+        return response.json()
+
+    def _get_cluster_id(self, data):
+        return data['Swarm']['Cluster']['ID']
+
+    @property
+    def swarm_cluster_id(self):
+        return self._get_cluster_id(self.snapshot.info)
+
+    def take_current_snapshot(self):
+        info = self._get_json('/info')
+        del info['SystemTime']
+
+        services = self._get_json('/services')
+        services = {data['ID']: data for data in services}
+
+        tasks = self._get_json('/tasks')
+        tasks = {data['ID']: data for data in tasks}
+
+        return DockerSnapshot(info, services, tasks)
+
+    def take_stored_snapshot(self):
+        resources = Resource.objects.all()
+
+        info = None
+        services = {}
+        tasks = {}
+
+        for resource in resources:
+            if self.swarm_cluster_id in resource.names:
+                info = resource.snapshot
+            elif resource.parent == self.swarm_cluster_id:
+                services[resource.id] = resource.snapshot
+
+        for resource in resources:
+            if resource.parent in services:
+                tasks[resource.id] = resource.snapshot
+
+        return DockerSnapshot(info, services, tasks)
+
+    def _compare_collections(self, prev_collection, curr_collection):
+        prev_set = set(prev_collection)
+        curr_set = set(curr_collection)
+
+        created = curr_set.difference(prev_set)
+        deleted = prev_set.difference(curr_set)
+
+        common = prev_set & curr_set
+        updated = {
+            resource_id for resource_id in common
+            if prev_collection[resource_id] != curr_collection[resource_id]
+        }
+
+        return created, updated, deleted
+
+    def compare_snapshots(self, prev, curr):
+        created = []
+        updated = []
+        deleted = []
+
+        import sys
+        sys.stdin = open('/dev/stdin')
+        #breakpoint()
+
+        if prev is None:
+            # First run
+            created.append(('info', curr.info))
+            created.extend(
+                ('service', service)
+                for service in curr.services.values()
+            )
+            created.extend(
+                ('task', task)
+                for task in curr.tasks.values()
+            )
+
+        else:
+            # Compare info
+            if prev.info != curr.info:
+                updated.append(('info', curr.info))
+
+            # Compare services
+            created_services, updated_services, deleted_services = self._compare_collections(
+                prev.services, curr.services)
+
+            created.extend(('service', curr.services[service_id]) for service_id in created_services)
+            updated.extend(('service', curr.services[service_id]) for service_id in updated_services)
+            deleted.extend(('service', prev.services[service_id]) for service_id in deleted_services)
+
+            # Compare tasks
+            created_tasks, updated_tasks, deleted_tasks = self._compare_collections(
+                prev.tasks, curr.tasks)
+
+            created.extend(('task', curr.tasks[task_id]) for task_id in created_tasks)
+            updated.extend(('task', curr.tasks[task_id]) for task_id in updated_tasks)
+            deleted.extend(('task', prev.tasks[task_id]) for task_id in deleted_tasks)
+
+        # Return differences
+        return created, updated, deleted
+
+    def create_resource(self, resource_data):
+        self.save_resource(resource_data)
+
+    def update_resource(self, resource_data):
+        self.save_resource(resource_data)
+
+    def save_resource(self, resource_data):
+        resource_type, resource_data = resource_data
+
+        if resource_type == 'info':
+            self.save_swarm_info(resource_data)
+        elif resource_type == 'service':
+            self.save_service(resource_data)
+        elif resource_type == 'task':
+            self.save_task(resource_data)
+        else:
+            raise AssertionError(resource_type)
+
+    def save_swarm_info(self, data):
+        names = [self._get_cluster_id(data)]
+
+        resource = Resource(
+            type='swarm-cluster',
+            names=names,
+            owner=self.agent.id,
+            status='running',
+            snapshot=data,
+        )
+
+        resource.save()
+
+    def _get_service_names(self, data):
+        return [data['ID'], data['Spec']['Name']]
+
+    def save_service(self, data):
+        resource = Resource(
+            type='swarm-service',
+            owner=self.agent.id,
+            parent=self.snapshot.info['ID'],
+            names=self._get_service_names(data),
+            status='running',
+            snapshot=data,
+        )
+        resource.save()
+
+    def _get_task_names(self, data):
+        task_id = data['ID']
+        names = [task_id]
+
+        try:
+            names.append(data['Status']['ContainerStatus']['ContainerID'])
+        except KeyError:
+            pass
+
+        try:
+            service_id = data['ServiceID']
+            service_name = self.snapshot.services[service_id]['Spec']['Name']
+        except KeyError:
+            service_name = None
+
+        if service_name:
+            if 'Slot' in data:
+                task_name = f'{service_name}.{data["Slot"]}'
+            else:
+                task_name = f'{service_name}.{data["NodeID"]}'
+
+            names.append(task_name)
+            names.append(f'{task_name}.{task_id}')
+
+        return names
+
+    def _get_task_image(self, data):
+        match = _image_re.match(data['Spec']['ContainerSpec']['Image'])
+        repository, name, tag, digest = match.groups()
+
+        if not repository:
+            repository = 'library'
+        if not tag:
+            tag = 'latest'
+
+        image = '{}/{}:{}'.format(repository, name, tag)
+
+        if digest:
+            image += '@' + digest
+
+        return image
+
+    def _get_task_status(self, data):
+        docker2storm_status = {
+            'new': 'created',
+            'allocated': 'created',
+            'pending': 'starting',
+            'assigned': 'starting',
+            'accepted': 'starting',
+            'preparing': 'starting',
+            'ready': 'starting',
+            'starting': 'starting',
+            'running': 'running',
+            'complete': 'stopped',
+            'shutdown': 'removing',
+            'failed': 'error',
+            'rejected': 'error',
+        }
+
+        return docker2storm_status.get(data['Status']['State'], 'unknown')
+
+    def save_task(self, data):
+        resource = Resource(
+            type='swarm-task',
+            owner=self.agent.id,
+            parent=data['ServiceID'],
+            names=self._get_task_names(data),
+            image=self._get_task_image(data),
+            status=self._get_task_status(data),
+            snapshot=data,
+        )
+        resource.save()
+
+    def delete_resource(self, resource_data):
+        resource_type, resource_data = resource_data
+        Resource(names=resource_data['ID']).delete()
+
+
+class SwarmDeployerClient(ExecutorClient):
+
+    agent_type = 'swarm'
+
+    def add_arguments(self, parser):
+        super().add_arguments(parser)
+        parser.add_argument(
+            '-H', '--host', metavar='HOST[:PORT]', required=True,
+            help='Docker daemon to connect to')
+
+    def get_executors(self):
+        return [
+            SwarmDiscoveryExecutor(self.agent, self.options.host),
+            SwarmProcedureExecutor(self.agent, self.options.host),
+        ]
+
+
+if __name__ == '__main__':
+    SwarmDeployerClient.main()

@@ -5,8 +5,8 @@ setuptools >= 20
 -e ./cli
 
 -e ./executors/consul
--e ./executors/docker
 -e ./executors/loadbalancer
+-e ./executors/swarm
 
 # requirements for docs
 sphinx >= 1.6, < 1.7
