@@ -40,7 +40,7 @@ router.register(r'agents', views.AgentViewSet)
 router.register(r'resources', views.ResourceViewSet)
 router.register(r'groups', views.GroupViewSet)
 router.register(r'apps', views.ApplicationViewSet)
-router.register(r'recipes', views.RecipeViewSet)
+router.register(r'procedures', views.ProcedureViewSet)
 router.register(r'triggers', views.TriggerViewSet)
 
 urlpatterns = [

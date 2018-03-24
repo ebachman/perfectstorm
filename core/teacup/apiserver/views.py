@@ -46,7 +46,7 @@ from teacup.apiserver.models import (
     Agent,
     Application,
     Group,
-    Recipe,
+    Procedure,
     Resource,
     Trigger,
     cleanup_expired_agents,
@@ -58,7 +58,7 @@ from teacup.apiserver.serializers import (
     CreateTriggerSerializer,
     GroupAddRemoveMembersSerializer,
     GroupSerializer,
-    RecipeSerializer,
+    ProcedureSerializer,
     ResourceSerializer,
     TriggerCompleteSerializer,
     TriggerHandleSerializer,
@@ -210,10 +210,10 @@ class ApplicationViewSet(MultiLookupMixin, QueryFilterMixin, ModelViewSet):
     lookup_fields = ('id', 'name')
 
 
-class RecipeViewSet(MultiLookupMixin, QueryFilterMixin, ModelViewSet):
+class ProcedureViewSet(MultiLookupMixin, QueryFilterMixin, ModelViewSet):
 
-    queryset = Recipe.objects.all()
-    serializer_class = RecipeSerializer
+    queryset = Procedure.objects.all()
+    serializer_class = ProcedureSerializer
 
     lookup_fields = ('id', 'name')
 

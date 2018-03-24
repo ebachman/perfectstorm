@@ -384,7 +384,21 @@ class Application(NameMixin, Document):
     expose = EmbeddedDocumentListField(ServiceReference)
 
 
-class Trigger(TypeMixin, Document):
+class ProcedureMixin:
+
+    content = StringField(null=True)
+    options = EscapedDynamicField(default=dict)
+    params = EscapedDynamicField(default=dict)
+    target = ReferenceField(Resource, null=True)
+
+
+class Procedure(NameMixin, TypeMixin, ProcedureMixin, Document):
+
+    id = FancyIdField('procedure')
+    content = StringField(required=True)
+
+
+class Trigger(TypeMixin, ProcedureMixin, Document):
 
     STATUS_CHOICES = (
         ('pending', 'Pending'),
@@ -393,11 +407,12 @@ class Trigger(TypeMixin, Document):
         ('error', 'Error'),
     )
 
-    id = FancyIdField('recipe')
-    status = StringField(choices=STATUS_CHOICES, default='pending', required=True)
+    id = FancyIdField('trigger')
     owner = ReferenceField(Agent, null=True)
+    status = StringField(choices=STATUS_CHOICES, default='pending', required=True)
 
-    arguments = EscapedDynamicField(default=dict, required=True)
+    type = StringField(min_length=1, null=True)
+    procedure = ReferenceField(Procedure, null=True)
     result = EscapedDynamicField(default=dict, required=True)
 
     created = DateTimeField(default=datetime.now, required=True)
@@ -410,20 +425,20 @@ class Trigger(TypeMixin, Document):
         'ordering': ['created'],
     }
 
+    def clean(self):
+        super().clean()
+
+        if not self.target:
+            if not self.procedure or not self.procedure.target:
+                raise ValidationError('No target specified')
+            self.target = self.procedure.target
+
+        if not self.content:
+            if not self.procedure:
+                raise ValidationError('No content and no procedure specified')
+
+        if self.status not in ('done', 'error'):
+            self.result = {}
+
     def __str__(self):
         return str(self.pk)
-
-
-class Recipe(NameMixin, TypeMixin, Document):
-
-    id = FancyIdField('recipe')
-    content = StringField(required=True)
-
-    options = EscapedDynamicField(default=dict, required=True)
-    params = EscapedDynamicField(default=dict, required=True)
-
-    target = ReferenceField(Resource, null=True)
-
-    meta = {
-        'indexes': ['target'],
-    }

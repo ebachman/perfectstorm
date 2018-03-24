@@ -44,7 +44,7 @@ from teacup.apiserver.models import (
     Application,
     ComponentLink,
     Group,
-    Recipe,
+    Procedure,
     Resource,
     Service,
     ServiceReference,
@@ -200,24 +200,43 @@ class ApplicationSerializer(DocumentSerializer):
         return data
 
 
-class CreateTriggerSerializer(DocumentSerializer):
+class ProcedureSerializer(DocumentSerializer):
 
-    arguments = EscapedDynamicField(default=dict)
+    options = EscapedDynamicField(default=dict)
+    params = EscapedDynamicField(default=dict)
+    target = StrReferenceField(Resource, allow_null=True)
 
     class Meta:
-        model = Trigger
-        fields = ('type', 'arguments')
+        model = Procedure
+        fields = ('id', 'type', 'name', 'content', 'options', 'params', 'target')
+        read_only_fields = ('id',)
 
 
-class TriggerSerializer(DocumentSerializer):
+class BaseTriggerSerializer(DocumentSerializer):
 
-    arguments = EscapedDynamicField(default=dict)
+    procedure = StrReferenceField(Procedure)
+
+    options = EscapedDynamicField(default=dict)
+    params = EscapedDynamicField(default=dict)
     result = EscapedDynamicField(default=dict)
+    target = StrReferenceField(Resource, allow_null=True)
 
     class Meta:
         model = Trigger
-        fields = ('id', 'type', 'arguments', 'result', 'status', 'created')
-        read_only_fields = ('status', 'created')
+        fields = ('id', 'type', 'owner', 'status', 'procedure', 'content', 'options', 'params',
+                  'result', 'target', 'created')
+
+
+class CreateTriggerSerializer(BaseTriggerSerializer):
+
+    class Meta(BaseTriggerSerializer.Meta):
+        read_only_fields = ('id', 'owner', 'status', 'created')
+
+
+class TriggerSerializer(BaseTriggerSerializer):
+
+    class Meta(BaseTriggerSerializer.Meta):
+        read_only_fields = BaseTriggerSerializer.Meta.fields
 
 
 class TriggerHandleSerializer(Serializer):
@@ -228,13 +247,3 @@ class TriggerHandleSerializer(Serializer):
 class TriggerCompleteSerializer(Serializer):
 
     result = EscapedDynamicField(default=dict)
-
-
-class RecipeSerializer(DocumentSerializer):
-
-    options = EscapedDynamicField(default=dict)
-    params = EscapedDynamicField(default=dict)
-
-    class Meta:
-        model = Recipe
-        fields = ('id', 'name', 'type', 'content', 'options', 'params', 'target')
