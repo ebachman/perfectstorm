@@ -127,8 +127,8 @@ class Application(Model):
     name = StringField(primary_key=True)
 
     components = ListField(StringField())
-    links = DictField()
-    expose = ListField(StringField())
+    links = ListField(DictField())
+    expose = ListField(DictField())
 
 
 class ProcedureMixin(Model):
