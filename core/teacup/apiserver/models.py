@@ -219,6 +219,7 @@ class Resource(TypeMixin, Document):
         ('created', 'Created'),
         ('starting', 'Starting'),
         ('running', 'Running'),
+        ('updating', 'Updating'),
         ('stopping', 'Stopped'),
         ('stopped', 'Stopped'),
         ('error', 'Error'),
