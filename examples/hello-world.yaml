@@ -1,18 +1,17 @@
 - group:
     name: hello-world
     query:
-      type: container
+      type: swarm-task
       image:
-        $regex: ^(library/)?hello-world(:.+)?$
+        $regex: '^library/hello-world:'
 
 - application:
     name: hello-world
     components:
       - hello-world
 
-- recipe:
+- procedure:
     name: hello-world
-    type: docker
+    type: swarm
     content: |
-      - CONTAINER_ID: run -d hello-world
-      - rm -f $CONTAINER_ID
+      - service create --name hello-world hello-world
