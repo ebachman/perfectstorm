@@ -234,8 +234,8 @@ class Resource(TypeMixin, Document):
 
     STATE_CHOICES = (
         ('unknown', 'Unknown'),
-        ('running', 'Running (Healthy)'),
-        ('running-unhealthy', 'Running (Unhealthy)'),
+        ('running', 'Running'),
+        ('unhealthy', 'Unhealthy'),
         ('not-running', 'Not Running'),
         ('error', 'Error'),
     )
@@ -272,7 +272,7 @@ class Resource(TypeMixin, Document):
             if self.health in ('unknown', 'healthy'):
                 self.state = 'running'
             else:
-                self.state = 'running-unhealthy'
+                self.state = 'unhealthy'
         elif self.status == 'error':
             self.state = 'error'
         else:
