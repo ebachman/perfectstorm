@@ -41,7 +41,7 @@ from perfectstorm import (
     Agent,
     Application,
     Group,
-    Recipe,
+    Procedure,
     Resource,
     Trigger,
 )
@@ -435,10 +435,10 @@ class GroupHandler(EntityHandler):
     importer = EntityImporter()
 
 
-class RecipeHandler(EntityHandler):
+class ProcedureHandler(EntityHandler):
 
-    model = Recipe
-    entity_name = 'recipe'
+    model = Procedure
+    entity_name = 'procedure'
 
     commands = [
         EntityListCommand([
@@ -472,23 +472,32 @@ class TriggerRunCommand(EntityCommand):
         super().add_arguments(parser)
         parser.add_argument('-d', '--detach', action='store_true')
         parser.add_argument('-k', '--keep', action='store_true')
-        parser.add_argument('-t', '--type', required=True)
-        parser.add_argument('arguments', metavar='ARGUMENT[=VALUE]', type=self._parse_trigger_arg, nargs='*')
+
+        parser.add_argument('-o', '--option', dest='options', type=self._parse_trigger_arg, nargs='*', default=[])
+        parser.add_argument('-x', '--param', dest='params', type=self._parse_trigger_arg, nargs='*', default=[])
+        parser.add_argument('-t', '--target')
+
+        procedure_group = parser.add_mutually_exclusive_group(required=True)
+        procedure_group.add_argument('-p', '--procedure')
+        procedure_group.add_argument('-c', '--content')
 
     def _parse_trigger_arg(self, arg):
         parts = arg.split('=', 1)
         if len(parts) == 1:
-            return {arg: True}
+            key = arg
+            value = True
         else:
             key, value = parts
-            return {key: yaml_load(value)}
+            value = yaml_load(value)
+        return key, value
 
     def __call__(self, client, model):
-        arguments = {}
-        for arg in client.options.arguments:
-            arguments.update(arg)
-
-        obj = model(type=client.options.type, arguments=arguments)
+        obj = model(
+            procedure=client.options.procedure,
+            content=client.options.content,
+            options=dict(client.options.options),
+            params=dict(client.options.params),
+            target=client.options.target)
         obj.save()
 
         if not client.options.detach:
@@ -522,7 +531,7 @@ class StormCtl(CommandLineClient):
         AgentHandler(),
         ApplicationHandler(),
         GroupHandler(),
-        RecipeHandler(),
+        ProcedureHandler(),
         ResourceHandler(),
         TriggerHandler(),
     ]
