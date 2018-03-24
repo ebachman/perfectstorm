@@ -48,7 +48,7 @@ from .models import (
     Agent,
     Application,
     Group,
-    Recipe,
+    Procedure,
     Resource,
     Trigger,
 )
@@ -68,7 +68,7 @@ __all__ = [
     'ListField',
     'Manager',
     'Model',
-    'Recipe',
+    'Procedure',
     'Resource',
     'Session',
     'StringField',

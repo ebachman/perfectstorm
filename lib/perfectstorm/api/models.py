@@ -131,19 +131,21 @@ class Application(Model):
     expose = ListField(StringField())
 
 
-class Recipe(Model):
+class ProcedureMixin(Model):
 
-    _path = 'v1/recipes'
+    content = StringField(null=True)
+    options = DictField()
+    params = DictField()
+    target = StringField(null=True)
+
+
+class Procedure(ProcedureMixin, Model):
+
+    _path = 'v1/procedures'
 
     id = StringField(primary_key=True)
     name = StringField(primary_key=True)
     type = StringField()
-
-    content = StringField()
-    options = DictField()
-    params = DictField()
-
-    target = StringField(null=True)
 
 
 class TriggerHandler:
@@ -164,15 +166,16 @@ class TriggerHandler:
             self.trigger.fail(exc_value)
 
 
-class Trigger(Model):
+class Trigger(ProcedureMixin, Model):
 
     _path = 'v1/triggers'
 
     id = StringField(primary_key=True)
-    type = StringField()
-    status = StringField(default='pending')
+    type = StringField(null=True)
+    owner = StringField(read_only=True)
+    status = StringField(read_only=True)
 
-    arguments = DictField()
+    procedure = StringField(null=True)
     result = DictField()
 
     created = StringField(null=True)

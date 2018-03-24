@@ -29,20 +29,14 @@
 
 import abc
 
-from ..api import Trigger, Recipe
+from ..api import Trigger, Procedure
 from . import AgentExecutor, PollingExecutor
 
 
 class TriggerExecutor(AgentExecutor, PollingExecutor):
 
-    @property
-    @abc.abstractmethod
-    def trigger_type(self):
-        raise NotImplementedError
-
     def get_pending_triggers(self):
-        return Trigger.objects.filter(
-            type=self.trigger_type, status='pending')
+        return Trigger.objects.filter(status='pending')
 
     def poll(self):
         pending_triggers = self.get_pending_triggers()
@@ -72,28 +66,20 @@ class TriggerExecutor(AgentExecutor, PollingExecutor):
         self.trigger.fail(exc)
 
 
-class RecipeExecutor(TriggerExecutor):
-
-    trigger_type = 'recipe'
+class ProcedureExecutor(TriggerExecutor):
 
     def run_trigger(self, trigger):
-        self.recipe = self.get_recipe(trigger)
-        self.run_recipe(self.recipe)
+        self.procedure = self.get_procedure(trigger)
+        self.run_procedure(self.procedure)
 
-    def get_recipe(self, trigger):
-        arguments = trigger.arguments
+    def get_procedure(self, trigger):
+        procedure = Procedure.objects.get(_id=trigger.procedure)
 
-        recipe_name = arguments['recipe']
-        recipe = Recipe.objects.get(name=recipe_name)
+        # XXX procedure.options.update(trigger.options)
+        # XXX procedure.params.update(trigger.params)
 
-        if arguments.get('options'):
-            recipe.options.update(arguments['options'])
-
-        if arguments.get('params'):
-            recipe.params.update(arguments['params'])
-
-        return recipe
+        return procedure
 
     @abc.abstractmethod
-    def run_recipe(self, recipe):
+    def run_procedure(self, procedure):
         raise NotImplementedError
