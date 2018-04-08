@@ -29,6 +29,7 @@
 
 import functools
 import re
+import string
 import time
 import uuid
 from datetime import datetime, timedelta
@@ -52,6 +53,29 @@ from mongoengine.queryset import Q
 
 
 MetaDict._merge_options += ('lookup_fields',)
+
+
+def b62encode(s, alphabet=string.digits + string.ascii_uppercase + string.ascii_lowercase):
+    n = int.from_bytes(s, 'big')
+
+    if not n:
+        return alphabet[0]
+
+    chars = []
+    size = len(alphabet)
+
+    while n:
+        n, m = divmod(n, size)
+        chars.append(alphabet[m])
+
+    return ''.join(reversed(chars))
+
+
+def generate_id(prefix=None, gen=uuid.uuid1, encode=b62encode):
+    s = encode(gen().bytes)
+    if prefix is not None:
+        s = '-'.join((prefix, s))
+    return s
 
 
 def _escape_char(matchobj, chr=chr, ord=ord):
@@ -136,10 +160,16 @@ class FancyIdField(StringField):
 
     def __init__(self, prefix, *args, **kwargs):
         self.prefix = prefix
-        super().__init__(*args, required=True, primary_key=True, null=False, default=self._generate_new, **kwargs)
+        super().__init__(
+            *args,
+            required=True,
+            primary_key=True,
+            null=False,
+            default=self._generate_id,
+            **kwargs)
 
-    def _generate_new(self):
-        return '-'.join((self.prefix, uuid.uuid1().hex))
+    def _generate_id(self):
+        return generate_id(self.prefix)
 
 
 def get_document(document_type, lookup_value, queryset=None, only_lookup_fields=False):
@@ -325,7 +355,7 @@ class Resource(TypeMixin, Document):
         ('error', 'Error'),
     )
 
-    id = FancyIdField('resource')
+    id = FancyIdField('res')
     names = ListField(StringField(min_length=1), min_length=1, required=True)
     owner = SmartReferenceField(Agent, required=True)
 
@@ -492,7 +522,7 @@ class ProcedureMixin:
 
 class Procedure(NameMixin, TypeMixin, ProcedureMixin, Document):
 
-    id = FancyIdField('procedure')
+    id = FancyIdField('proc')
     content = StringField(required=True)
 
     meta = {
@@ -509,7 +539,7 @@ class Trigger(TypeMixin, ProcedureMixin, Document):
         ('error', 'Error'),
     )
 
-    id = FancyIdField('trigger')
+    id = FancyIdField('trig')
     owner = SmartReferenceField(Agent, null=True)
     status = StringField(choices=STATUS_CHOICES, default='pending', required=True)
 
