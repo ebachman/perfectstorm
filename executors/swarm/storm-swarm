@@ -141,13 +141,12 @@ class SwarmProcedureExecutor(DockerExecutorMixin, ProcedureExecutor):
         if not match:
             raise RuntimeError('Could not find Swarm Cluster ID')
 
-        cluster_id = match.group(1)
-        self.cluster_resource = Resource.objects.get(names=cluster_id)
+        self.cluster_id = match.group(1)
 
     def get_pending_triggers(self):
         qs = super().get_pending_triggers()
         return qs.filter({
-            'target': self.cluster_resource.id,
+            'target': self.cluster_id,
         })
 
     def get_procedure(self, trigger):
