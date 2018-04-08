@@ -43,7 +43,7 @@ from perfectstorm.executors import DiscoveryExecutor, ProcedureExecutor
 
 
 _var_re = re.compile(r'(?<!\$)\$(\w+|{[^}]*})')
-_image_re = re.compile(r'^(?:(.+)/)?(.+)(?::(.+))?(?:@(.+))$')
+_image_re = re.compile(r'^(?:(.+)/)?(.+)(?::(.+))?(?:@(.+))?$')
 _cluster_id_re = re.compile(r'^ ClusterID: (.+)$', re.MULTILINE)
 
 DockerSnapshot = collections.namedtuple('DockerSnapshot', 'info services tasks')
