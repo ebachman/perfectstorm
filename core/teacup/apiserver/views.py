@@ -48,6 +48,7 @@ from teacup.apiserver.models import (
     Group,
     Procedure,
     Resource,
+    SmartReferenceField,
     Trigger,
     cleanup_expired_agents,
 )
@@ -66,6 +67,55 @@ from teacup.apiserver.serializers import (
 )
 
 
+def _traverse_dict(dct):
+    if isinstance(dct, dict):
+        it = dct.items()
+    elif isinstance(dct, list):
+        it = enumerate(dct)
+    else:
+        raise TypeError(type(dct).__name__)
+
+    for key, value in it:
+        yield dct, key, value
+        if isinstance(value, (dict, list)):
+            yield from _traverse_dict(value)
+
+
+def _resolve_smart_references(model, query):
+    refs = []
+
+    for dct, key, value in _traverse_dict(query):
+        field = model._fields.get(key)
+        if isinstance(field, SmartReferenceField):
+            refs.append((dct, key, value, field))
+
+    if not refs:
+        return query
+
+    for dct, key, value, field in refs:
+        document = field._get_document(value, only_lookup_fields=True)
+
+        if document is None:
+            continue
+
+        values = []
+        lookup_fields = field.document_type._meta.get('lookup_fields', ())
+
+        for lookup_key in lookup_fields:
+            value = getattr(document, lookup_key, None)
+            if value is not None:
+                if isinstance(value, (tuple, list)):
+                    values.extend(value)
+                else:
+                    values.append(value)
+
+        dct[key] = {
+            '$in': values,
+        }
+
+    return query
+
+
 def query_filter(request, queryset):
     """Apply the filter specified with the 'q' parameter, if any."""
     query_string = request.GET.get('q')
@@ -80,6 +130,8 @@ def query_filter(request, queryset):
         if not isinstance(query, dict):
             detail = {'q': ['Query must be a dictionary']}
             raise MalformedQueryError(detail=detail)
+
+        query = _resolve_smart_references(queryset._document, query)
 
         queryset = queryset.filter(__raw__=query)
 
@@ -127,7 +179,7 @@ class MultiLookupMixin:
         filter_query = Q()
         value = self.kwargs[self.lookup_url_kwarg]
 
-        for field in self.lookup_fields:
+        for field in queryset._document._meta['lookup_fields']:
             filter_query |= Q(**{field: value})
 
         return get_object_or_404(queryset, filter_query)
@@ -160,15 +212,11 @@ class ResourceViewSet(CleanupAgentsMixin, MultiLookupMixin, QueryFilterMixin, Mo
     queryset = Resource.objects.all()
     serializer_class = ResourceSerializer
 
-    lookup_fields = ('id', 'names')
-
 
 class GroupViewSet(MultiLookupMixin, QueryFilterMixin, ModelViewSet):
 
     queryset = Group.objects.all()
     serializer_class = GroupSerializer
-
-    lookup_fields = ('id', 'name')
 
     @detail_route(methods=['GET', 'POST'])
     def members(self, request, id=None):
@@ -207,15 +255,11 @@ class ApplicationViewSet(MultiLookupMixin, QueryFilterMixin, ModelViewSet):
     queryset = Application.objects.all()
     serializer_class = ApplicationSerializer
 
-    lookup_fields = ('id', 'name')
-
 
 class ProcedureViewSet(MultiLookupMixin, QueryFilterMixin, ModelViewSet):
 
     queryset = Procedure.objects.all()
     serializer_class = ProcedureSerializer
-
-    lookup_fields = ('id', 'name')
 
 
 class TriggerViewSet(CleanupAgentsMixin, QueryFilterMixin, ModelViewSet):
@@ -259,7 +303,7 @@ class TriggerViewSet(CleanupAgentsMixin, QueryFilterMixin, ModelViewSet):
 
         trigger.reload()
 
-        if trigger.status != 'running' or trigger.owner != agent:
+        if trigger.status != 'running' or trigger.owner.id != agent:
             # Case 1 or 2, error
             return Response(
                 {'status': ["Trigger is not in 'pending' state"]},

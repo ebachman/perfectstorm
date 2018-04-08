@@ -49,12 +49,28 @@ from teacup.apiserver.models import (
     Service,
     ServiceReference,
     Trigger,
+    get_document,
 )
 
 
-class StrReferenceField(ReferenceField):
+class SmartReferenceField(ReferenceField):
 
     pk_field_class = CharField
+
+    def to_internal_value(self, value):
+        value = self.parse_id(value)
+
+        queryset = self.get_queryset()
+        document = get_document(
+            queryset._document, value,
+            queryset=queryset, only_lookup_fields=True)
+        if document is None:
+            self.fail('not_found', pk_value=value)
+
+        return document.pk
+
+    def to_representation(self, value):
+        return self.pk_field.to_representation(value)
 
 
 class EscapedDynamicField(Field):
@@ -75,7 +91,7 @@ class AgentSerializer(DocumentSerializer):
 
 class ResourceSerializer(DocumentSerializer):
 
-    owner = StrReferenceField(Agent)
+    owner = SmartReferenceField(Agent)
     snapshot = EscapedDynamicField(default=dict)
 
     class Meta:
@@ -204,7 +220,7 @@ class ProcedureSerializer(DocumentSerializer):
 
     options = EscapedDynamicField(default=dict)
     params = EscapedDynamicField(default=dict)
-    target = StrReferenceField(Resource, allow_null=True)
+    target = SmartReferenceField(Resource, allow_null=True)
 
     class Meta:
         model = Procedure
@@ -214,12 +230,12 @@ class ProcedureSerializer(DocumentSerializer):
 
 class BaseTriggerSerializer(DocumentSerializer):
 
-    procedure = StrReferenceField(Procedure)
+    procedure = SmartReferenceField(Procedure)
 
     options = EscapedDynamicField(default=dict)
     params = EscapedDynamicField(default=dict)
     result = EscapedDynamicField(default=dict)
-    target = StrReferenceField(Resource, allow_null=True)
+    target = SmartReferenceField(Resource, allow_null=True)
 
     class Meta:
         model = Trigger
@@ -241,7 +257,7 @@ class TriggerSerializer(BaseTriggerSerializer):
 
 class TriggerHandleSerializer(Serializer):
 
-    agent = StrReferenceField(Agent)
+    agent = SmartReferenceField(Agent)
 
 
 class TriggerCompleteSerializer(Serializer):

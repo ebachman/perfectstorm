@@ -42,12 +42,16 @@ from mongoengine import (
     IntField,
     ListField,
     QuerySet,
-    ReferenceField,
     StringField,
     ValidationError,
 )
 
+from mongoengine.base.metaclasses import MetaDict
 from mongoengine.fields import BaseField
+from mongoengine.queryset import Q
+
+
+MetaDict._merge_options += ('lookup_fields',)
 
 
 def _escape_char(matchobj, chr=chr, ord=ord):
@@ -115,10 +119,15 @@ def cleanup_expired_agents():
 
 
 def cleanup_owned_documents(deleted_agent_ids):
-    orphaned_resources = Resource.objects.filter(owner__in=deleted_agent_ids)
+    if not deleted_agent_ids:
+        return
+
+    orphaned_resources = Resource.objects.filter(
+        owner__in=deleted_agent_ids)
     orphaned_resources.delete()
 
-    orphaned_triggers = Trigger.objects.filter(owner__in=deleted_agent_ids)
+    orphaned_triggers = Trigger.objects.filter(
+        owner__in=deleted_agent_ids)
     orphaned_triggers.filter(status='running').update(status='pending')
     orphaned_triggers.update(owner=None)
 
@@ -131,6 +140,79 @@ class FancyIdField(StringField):
 
     def _generate_new(self):
         return '-'.join((self.prefix, uuid.uuid1().hex))
+
+
+def get_document(document_type, lookup_value, queryset=None, only_lookup_fields=False):
+    lookup_fields = document_type._meta.get('lookup_fields', ())
+
+    if lookup_value is None or not lookup_fields:
+        return None
+
+    lookup_filters = Q()
+    for lookup_key in lookup_fields:
+        lookup_filters |= Q(**{lookup_key: lookup_value})
+
+    if queryset is None:
+        queryset = document_type.objects.all()
+    queryset = queryset.filter(lookup_filters)
+
+    if only_lookup_fields:
+        queryset = queryset.only(*lookup_fields)
+
+    try:
+        return queryset.get()
+    except Exception:
+        return None
+
+
+class SmartReferenceField(BaseField):
+    """
+    This is a ReferenceField-like field capable of referencing objects
+    with multiple lookup fields.
+    """
+
+    # TODO Consider creating a lazy version of this class, in a way
+    # TODO similar to LazyReferenceField.
+
+    def __init__(self, document_type, **kwargs):
+        self.document_type = document_type
+        super().__init__(**kwargs)
+
+    def _get_document(self, *args, **kwargs):
+        return get_document(self.document_type, *args, **kwargs)
+
+    def __get__(self, instance, owner):
+        if instance is None:
+            return self
+
+        value = instance._data.get(self.name)
+
+        if value is not None and not isinstance(value, Document):
+            document = self._get_document(value)
+            instance._data[self.name] = document
+
+        return super().__get__(instance, owner)
+
+    def to_mongo(self, value):
+        if isinstance(value, Document):
+            if not isinstance(value, self.document_type):
+                self.error(
+                    f'This field can only store references to '
+                    f'{self.document_type.__name__} documents, not '
+                    f'{type(document).__name__}')
+
+            document = value
+            lookup_fields = self.document_type._meta.get('lookup_fields', ())
+
+            for key in lookup_fields:
+                value = getattr(document, key, None)
+                if value is not None:
+                    return value
+
+            if value is None:
+                self.error('All lookup fields are unset')
+
+        return value
 
 
 class EscapedDynamicField(BaseField):
@@ -163,6 +245,7 @@ class NameMixin:
 
     meta = {
         'indexes': ['name'],
+        'lookup_fields': ['name'],
     }
 
     def __str__(self):
@@ -187,8 +270,9 @@ class AgentQuerySet(QuerySet):
     def delete(self, *args, **kwargs):
         queryset = self.clone()
         agent_ids = list(queryset.values_list('pk'))
-        super().delete(*args, **kwargs)
         cleanup_owned_documents(agent_ids)
+
+        super().delete(*args, **kwargs)
 
 
 class Agent(TypeMixin, Document):
@@ -201,11 +285,12 @@ class Agent(TypeMixin, Document):
     meta = {
         'queryset_class': AgentQuerySet,
         'indexes': ['heartbeat'],
+        'lookup_fields': ['id'],
     }
 
     def delete(self):
-        super().delete()
         cleanup_owned_documents([self.pk])
+        super().delete()
 
     def __str__(self):
         return str(self.pk)
@@ -242,7 +327,7 @@ class Resource(TypeMixin, Document):
 
     id = FancyIdField('resource')
     names = ListField(StringField(min_length=1), min_length=1, required=True)
-    owner = ReferenceField(Agent, required=True)
+    owner = SmartReferenceField(Agent, required=True)
 
     parent = StringField(min_length=1, null=True)
     image = StringField(min_length=1, null=True)
@@ -258,6 +343,10 @@ class Resource(TypeMixin, Document):
             'names',
             'owner',
             'state',
+        ],
+        'lookup_fields': [
+            'id',
+            'names',
         ],
     }
 
@@ -306,8 +395,12 @@ class Group(NameMixin, Document):
     services = EmbeddedDocumentListField(Service)
 
     query = EscapedDynamicField(default=dict, required=True)
-    include = ListField(ReferenceField(Resource))
-    exclude = ListField(ReferenceField(Resource))
+    include = ListField(SmartReferenceField(Resource))
+    exclude = ListField(SmartReferenceField(Resource))
+
+    meta = {
+        'lookup_fields': ['id'],
+    }
 
     def save(self, *args, write_concern=None, **kwargs):
         if write_concern is None:
@@ -344,7 +437,7 @@ class Group(NameMixin, Document):
 
 class ServiceReference(EmbeddedDocument):
 
-    group = ReferenceField(Group, required=True)
+    group = SmartReferenceField(Group, required=True)
     service_name = StringField(min_length=1, required=True)
 
     @property
@@ -364,7 +457,7 @@ class ServiceReference(EmbeddedDocument):
 
 class ComponentLink(EmbeddedDocument):
 
-    from_component = ReferenceField(Group, required=True)
+    from_component = SmartReferenceField(Group, required=True)
     to_service = EmbeddedDocumentField(ServiceReference, required=True)
 
     def clean(self):
@@ -380,9 +473,13 @@ class ComponentLink(EmbeddedDocument):
 class Application(NameMixin, Document):
 
     id = FancyIdField('app')
-    components = ListField(ReferenceField(Group))
+    components = ListField(SmartReferenceField(Group))
     links = EmbeddedDocumentListField(ComponentLink)
     expose = EmbeddedDocumentListField(ServiceReference)
+
+    meta = {
+        'lookup_fields': ['id'],
+    }
 
 
 class ProcedureMixin:
@@ -390,13 +487,17 @@ class ProcedureMixin:
     content = StringField(null=True)
     options = EscapedDynamicField(default=dict)
     params = EscapedDynamicField(default=dict)
-    target = ReferenceField(Resource, null=True)
+    target = SmartReferenceField(Resource, null=True)
 
 
 class Procedure(NameMixin, TypeMixin, ProcedureMixin, Document):
 
     id = FancyIdField('procedure')
     content = StringField(required=True)
+
+    meta = {
+        'lookup_fields': ['id'],
+    }
 
 
 class Trigger(TypeMixin, ProcedureMixin, Document):
@@ -409,11 +510,11 @@ class Trigger(TypeMixin, ProcedureMixin, Document):
     )
 
     id = FancyIdField('trigger')
-    owner = ReferenceField(Agent, null=True)
+    owner = SmartReferenceField(Agent, null=True)
     status = StringField(choices=STATUS_CHOICES, default='pending', required=True)
 
     type = StringField(min_length=1, null=True)
-    procedure = ReferenceField(Procedure, null=True)
+    procedure = SmartReferenceField(Procedure, null=True)
     result = EscapedDynamicField(default=dict, required=True)
 
     created = DateTimeField(default=datetime.now, required=True)
@@ -424,6 +525,7 @@ class Trigger(TypeMixin, ProcedureMixin, Document):
             'owner',
         ],
         'ordering': ['created'],
+        'lookup_fields': ['id'],
     }
 
     def clean(self):
