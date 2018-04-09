@@ -29,7 +29,6 @@
 
 import functools
 import re
-import string
 import time
 import uuid
 from datetime import datetime, timedelta
@@ -55,32 +54,32 @@ from mongoengine.queryset import Q
 MetaDict._merge_options += ('lookup_fields',)
 
 
-def b62encode(s, alphabet=string.digits + string.ascii_uppercase + string.ascii_lowercase):
-    """Return the base62 encoding of the given bytestring.
+def b62uuid_encode(uuid):
+    """Return the base62 encoding of the given UUID.
 
     Base62 strings consist of digits (0-9) and letters (A-Z, a-z).
     """
-    n = int.from_bytes(s, 'big')
+    n = uuid.int
+    alphabet = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz'
 
-    if not n:
-        return alphabet[0]
+    # UUIDs are 128-bit numbers. When using base 62, the resulting string will
+    # be 22-characters long.
+    result = ['0'] * 22
 
-    chars = []
-    size = len(alphabet)
+    for i in range(21, -1, -1):
+        n, m = divmod(n, 62)
+        result[i] = alphabet[m]
 
-    while n:
-        n, m = divmod(n, size)
-        chars.append(alphabet[m])
-
-    return ''.join(reversed(chars))
+    return ''.join(result)
 
 
-def generate_id(prefix=None, gen=uuid.uuid1, encode=b62encode):
-    """Generate a new ID with an optional prefix.
+def b62uuid_new(prefix=None, method=uuid.uuid1):
+    """Generate a new base62-encoded UUID.
 
-    By default, this creates a new UUID1 and encodes it using base62 encoding.
+    By default, this generates a new UUID using the UUID1 method. The resulting
+    string can have an optional prefix.
     """
-    s = encode(gen().bytes)
+    s = b62uuid_encode(method())
     if prefix is not None:
         s = prefix + s
     return s
@@ -201,7 +200,7 @@ class StormIdField(StringField):
         if owner is None:
             owner = self.owner_document
         prefix = owner._meta['id_prefix']
-        return generate_id(prefix)
+        return b62uuid_new(prefix)
 
 
 class StormReferenceField(BaseField):
