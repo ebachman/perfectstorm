@@ -340,8 +340,8 @@ class Resource(TypeMixin, StormDocument):
         ('updated', 'Updated'),
         ('stopping', 'Stopped'),
         ('stopped', 'Stopped'),
-        ('error', 'Error'),
         ('removing', 'Removing'),
+        ('error', 'Error'),
     )
 
     HEALTH_CHOICES = (
