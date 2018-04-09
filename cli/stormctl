@@ -64,6 +64,12 @@ def yaml_dump(arg):
     return yaml.dump(arg, sys.stdout, default_flow_style=False)
 
 
+def ellipsise(s, max_length):
+    if len(s) > max_length:
+        s = s[:max_length-3] + '...'
+    return s
+
+
 def get_object_id(obj):
     return str(obj.id)
 
@@ -72,7 +78,7 @@ def get_object_type(obj):
     return str(obj.type)
 
 
-def get_object_name(obj):
+def get_object_name(obj, max_length=50):
     if getattr(obj, 'name', None):
         name = obj.name
     elif getattr(obj, 'names', None):
@@ -82,6 +88,9 @@ def get_object_name(obj):
 
     if isinstance(name, list):
         name = ', '.join(str(item) for item in name)
+
+    if max_length:
+        name = ellipsise(name, max_length)
 
     return str(name)
 
