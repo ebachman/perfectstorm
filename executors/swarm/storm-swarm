@@ -291,6 +291,7 @@ class SwarmDiscoveryExecutor(DockerExecutorMixin, DiscoveryExecutor):
             names=names,
             owner=self.agent.id,
             status='running',
+            health='healthy',
             snapshot=data,
         )
 
@@ -306,6 +307,7 @@ class SwarmDiscoveryExecutor(DockerExecutorMixin, DiscoveryExecutor):
             parent=self.snapshot.info['ID'],
             names=self._get_service_names(data),
             status='running',
+            health='healthy',
             snapshot=data,
         )
         resource.save()
@@ -379,6 +381,7 @@ class SwarmDiscoveryExecutor(DockerExecutorMixin, DiscoveryExecutor):
             names=self._get_task_names(data),
             image=self._get_task_image(data),
             status=self._get_task_status(data),
+            health='healthy',
             snapshot=data,
         )
         resource.save()

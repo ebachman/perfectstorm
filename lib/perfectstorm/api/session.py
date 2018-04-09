@@ -46,7 +46,7 @@ DEFAULT_HOST = '127.0.0.1'
 DEFAULT_PORT = 8000
 
 
-def current_session():
+def _get_current_session():
     try:
         return _local_sessions.session_stack[-1]
     except (AttributeError, IndexError):
@@ -57,6 +57,10 @@ def current_session():
         return session
 
     raise RuntimeError('No active connections found. You must call connect() or use a Session object in a context manager')
+
+
+def current_session():
+    return CurrentSessionProxy()
 
 
 def connect(host=None, port=None):
@@ -206,3 +210,26 @@ class Session:
     def __exit__(self, exc_type, exc_value, exc_tb):
         popped = _local_sessions.session_stack.pop(-1)
         assert popped is self
+
+    def __repr__(self):
+        return '<{}: {}>'.format(self.__class__.__name__, str(self.api_root))
+
+
+class CurrentSessionProxy:
+
+    @property
+    def real(self):
+        return _get_current_session()
+
+    def __getattr__(self, name):
+        return getattr(self.real, name)
+
+    def __setattr__(self, name, value):
+        return setattr(self.real, name, value)
+
+    def __repr__(self):
+        try:
+            api_root = str(self.real.api_root)
+        except RuntimeError:
+            api_root = 'not connected'
+        return '<{}: {}>'.format(self.__class__.__name__, api_root)
