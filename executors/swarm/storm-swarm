@@ -229,10 +229,6 @@ class SwarmDiscoveryExecutor(DockerExecutorMixin, DiscoveryExecutor):
         updated = []
         deleted = []
 
-        import sys
-        sys.stdin = open('/dev/stdin')
-        #breakpoint()
-
         if prev is None:
             # First run
             created.append(('info', curr.info))
