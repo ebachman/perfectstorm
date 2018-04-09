@@ -2,9 +2,12 @@
 
 set -e
 
+cd "$(dirname "$(readlink -f "$0")")"/..
+
 pyflakes \
     cli \
     core \
     docs \
     executors \
-    lib
+    lib \
+    tests
