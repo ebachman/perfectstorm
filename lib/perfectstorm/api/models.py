@@ -73,7 +73,6 @@ class Resource(Model):
 
     status = StringField(default='unknown')
     health = StringField(default='unknown')
-    state = StringField(read_only=True)
 
     snapshot = DictField(null=True)
 

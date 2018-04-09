@@ -350,14 +350,6 @@ class Resource(TypeMixin, StormDocument):
         ('unhealthy', 'Unhealthy'),
     )
 
-    STATE_CHOICES = (
-        ('unknown', 'Unknown'),
-        ('running', 'Running'),
-        ('unhealthy', 'Unhealthy'),
-        ('not-running', 'Not Running'),
-        ('error', 'Error'),
-    )
-
     names = ListField(StringField(min_length=1), min_length=1, required=True)
     owner = StormReferenceField(Agent, required=True)
 
@@ -366,7 +358,6 @@ class Resource(TypeMixin, StormDocument):
 
     status = StringField(choices=STATUS_CHOICES, default='unknown', required=True)
     health = StringField(choices=HEALTH_CHOICES, default='unknown', required=True)
-    state = StringField(choices=STATE_CHOICES, required=True)
 
     snapshot = EscapedDynamicField()
 
@@ -377,27 +368,9 @@ class Resource(TypeMixin, StormDocument):
             'owner',
             'status',
             'health',
-            'state',
         ],
         'lookup_fields': ['names'],
     }
-
-    def clean(self):
-        super().clean()
-        self.update_state()
-
-    def update_state(self):
-        if self.status in (None, 'unknown'):
-            self.state = 'unknown'
-        elif self.status == 'running':
-            if self.health in ('unknown', 'healthy'):
-                self.state = 'running'
-            else:
-                self.state = 'unhealthy'
-        elif self.status == 'error':
-            self.state = 'error'
-        else:
-            self.state = 'not-running'
 
     def __str__(self):
         return self.names[0] if self.names else str(self.pk)

@@ -214,7 +214,6 @@ class ResourceListCommand(EntityListCommand):
             ('NAMES', get_object_name),
             ('STATUS', attrgetter('status')),
             ('HEALTH', attrgetter('health')),
-            ('STATE', attrgetter('state')),
         ]
         super().__init__(*args, columns=columns, **kwargs)
 
