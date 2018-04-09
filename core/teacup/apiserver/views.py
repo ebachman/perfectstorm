@@ -48,7 +48,7 @@ from teacup.apiserver.models import (
     Group,
     Procedure,
     Resource,
-    SmartReferenceField,
+    StormReferenceField,
     Trigger,
     cleanup_expired_agents,
 )
@@ -81,37 +81,26 @@ def _traverse_dict(dct):
             yield from _traverse_dict(value)
 
 
-def _resolve_smart_references(model, query):
+def _resolve_references(model, query):
     refs = []
 
     for dct, key, value in _traverse_dict(query):
         field = model._fields.get(key)
-        if isinstance(field, SmartReferenceField):
+        if isinstance(field, StormReferenceField):
             refs.append((dct, key, value, field))
 
     if not refs:
         return query
 
     for dct, key, value, field in refs:
-        document = field._get_document(value, only_lookup_fields=True)
+        doctype = field.document_type
 
-        if document is None:
+        try:
+            document = doctype.objects.only('id').lookup(value)
+        except Exception:
             continue
 
-        values = []
-        lookup_fields = field.document_type._meta.get('lookup_fields', ())
-
-        for lookup_key in lookup_fields:
-            value = getattr(document, lookup_key, None)
-            if value is not None:
-                if isinstance(value, (tuple, list)):
-                    values.extend(value)
-                else:
-                    values.append(value)
-
-        dct[key] = {
-            '$in': values,
-        }
+        dct[key] = document.id
 
     return query
 
@@ -131,7 +120,7 @@ def query_filter(request, queryset):
             detail = {'q': ['Query must be a dictionary']}
             raise MalformedQueryError(detail=detail)
 
-        query = _resolve_smart_references(queryset._document, query)
+        query = _resolve_references(queryset._document, query)
 
         queryset = queryset.filter(__raw__=query)
 

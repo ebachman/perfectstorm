@@ -49,25 +49,23 @@ from teacup.apiserver.models import (
     Service,
     ServiceReference,
     Trigger,
-    get_document,
 )
 
 
-class SmartReferenceField(ReferenceField):
+class StormReferenceField(ReferenceField):
 
     pk_field_class = CharField
 
     def to_internal_value(self, value):
         value = self.parse_id(value)
-
         queryset = self.get_queryset()
-        document = get_document(
-            queryset._document, value,
-            queryset=queryset, only_lookup_fields=True)
-        if document is None:
+
+        try:
+            document = queryset.only('id').lookup(value)
+        except Exception:
             self.fail('not_found', pk_value=value)
 
-        return document.pk
+        return document.id
 
     def to_representation(self, value):
         return self.pk_field.to_representation(value)
@@ -91,7 +89,7 @@ class AgentSerializer(DocumentSerializer):
 
 class ResourceSerializer(DocumentSerializer):
 
-    owner = SmartReferenceField(Agent)
+    owner = StormReferenceField(Agent)
     snapshot = EscapedDynamicField(default=dict)
 
     class Meta:
@@ -220,7 +218,7 @@ class ProcedureSerializer(DocumentSerializer):
 
     options = EscapedDynamicField(default=dict)
     params = EscapedDynamicField(default=dict)
-    target = SmartReferenceField(Resource, allow_null=True)
+    target = StormReferenceField(Resource, allow_null=True)
 
     class Meta:
         model = Procedure
@@ -230,12 +228,12 @@ class ProcedureSerializer(DocumentSerializer):
 
 class BaseTriggerSerializer(DocumentSerializer):
 
-    procedure = SmartReferenceField(Procedure)
+    procedure = StormReferenceField(Procedure)
 
     options = EscapedDynamicField(default=dict)
     params = EscapedDynamicField(default=dict)
     result = EscapedDynamicField(default=dict)
-    target = SmartReferenceField(Resource, allow_null=True)
+    target = StormReferenceField(Resource, allow_null=True)
 
     class Meta:
         model = Trigger
@@ -257,7 +255,7 @@ class TriggerSerializer(BaseTriggerSerializer):
 
 class TriggerHandleSerializer(Serializer):
 
-    agent = SmartReferenceField(Agent)
+    agent = StormReferenceField(Agent)
 
 
 class TriggerCompleteSerializer(Serializer):

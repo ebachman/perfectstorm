@@ -56,6 +56,10 @@ MetaDict._merge_options += ('lookup_fields',)
 
 
 def b62encode(s, alphabet=string.digits + string.ascii_uppercase + string.ascii_lowercase):
+    """Return the base62 encoding of the given bytestring.
+
+    Base62 strings consist of digits (0-9) and letters (A-Z, a-z).
+    """
     n = int.from_bytes(s, 'big')
 
     if not n:
@@ -72,9 +76,13 @@ def b62encode(s, alphabet=string.digits + string.ascii_uppercase + string.ascii_
 
 
 def generate_id(prefix=None, gen=uuid.uuid1, encode=b62encode):
+    """Generate a new ID with an optional prefix.
+
+    By default, this creates a new UUID1 and encodes it using base62 encoding.
+    """
     s = encode(gen().bytes)
     if prefix is not None:
-        s = '-'.join((prefix, s))
+        s = prefix + s
     return s
 
 
@@ -129,6 +137,30 @@ def unescape_keys(obj):
     return _replace_keys(obj, _unescape_key)
 
 
+class EscapedDynamicField(BaseField):
+    r"""
+    A DynamicField-like field that allows any kind of keys in dictionaries.
+
+    Specifically, it allows any key starting with '_', it does not treat
+    any keys in a special way (such as '_cls') and transparently escapes
+    forbidden BSON characters ('\0', '$' and '.') before saving.
+    """
+
+    def to_mongo(self, value, *args, **kwargs):
+        return escape_keys(value)
+
+    def to_python(self, value):
+        return unescape_keys(value)
+
+    def lookup_member(self, member_name):
+        return member_name
+
+    def prepare_query_value(self, op, value):
+        if isinstance(value, str):
+            return StringField().prepare_query_value(op, value)
+        return super().prepare_query_value(op, self.to_mongo(value))
+
+
 _cleanup_interval = 1
 _cleanup_timestamp = 0
 
@@ -156,46 +188,23 @@ def cleanup_owned_documents(deleted_agent_ids):
     orphaned_triggers.update(owner=None)
 
 
-class FancyIdField(StringField):
+class StormIdField(StringField):
+    """ID composed of a base62-encoded UUID and a prefx.
 
-    def __init__(self, prefix, *args, **kwargs):
-        self.prefix = prefix
-        super().__init__(
-            *args,
-            required=True,
-            primary_key=True,
-            null=False,
-            default=self._generate_id,
-            **kwargs)
+    Example: 'res-5ntqaD7PPwP2AgXIqQsOwm'. Here 'res-' is the prefix and
+    '5ntqaD7PPwP2AgXIqQsOwm' is the base62-encoded UUID.
+    """
 
-    def _generate_id(self):
-        return generate_id(self.prefix)
+    _auto_gen = True
 
-
-def get_document(document_type, lookup_value, queryset=None, only_lookup_fields=False):
-    lookup_fields = document_type._meta.get('lookup_fields', ())
-
-    if lookup_value is None or not lookup_fields:
-        return None
-
-    lookup_filters = Q()
-    for lookup_key in lookup_fields:
-        lookup_filters |= Q(**{lookup_key: lookup_value})
-
-    if queryset is None:
-        queryset = document_type.objects.all()
-    queryset = queryset.filter(lookup_filters)
-
-    if only_lookup_fields:
-        queryset = queryset.only(*lookup_fields)
-
-    try:
-        return queryset.get()
-    except Exception:
-        return None
+    def generate(self, owner=None):
+        if owner is None:
+            owner = self.owner_document
+        prefix = owner._meta['id_prefix']
+        return generate_id(prefix)
 
 
-class SmartReferenceField(BaseField):
+class StormReferenceField(BaseField):
     """
     This is a ReferenceField-like field capable of referencing objects
     with multiple lookup fields.
@@ -208,9 +217,6 @@ class SmartReferenceField(BaseField):
         self.document_type = document_type
         super().__init__(**kwargs)
 
-    def _get_document(self, *args, **kwargs):
-        return get_document(self.document_type, *args, **kwargs)
-
     def __get__(self, instance, owner):
         if instance is None:
             return self
@@ -218,55 +224,52 @@ class SmartReferenceField(BaseField):
         value = instance._data.get(self.name)
 
         if value is not None and not isinstance(value, Document):
-            document = self._get_document(value)
+            try:
+                document = self.document_type.objects.lookup(value)
+            except Exception:
+                document = None
             instance._data[self.name] = document
 
         return super().__get__(instance, owner)
 
     def to_mongo(self, value):
         if isinstance(value, Document):
-            if not isinstance(value, self.document_type):
-                self.error(
-                    f'This field can only store references to '
-                    f'{self.document_type.__name__} documents, not '
-                    f'{type(document).__name__}')
-
-            document = value
-            lookup_fields = self.document_type._meta.get('lookup_fields', ())
-
-            for key in lookup_fields:
-                value = getattr(document, key, None)
-                if value is not None:
-                    return value
-
-            if value is None:
-                self.error('All lookup fields are unset')
-
+            value = value.id
         return value
 
 
-class EscapedDynamicField(BaseField):
-    r"""
-    A DynamicField-like field that allows any kind of keys in dictionaries.
+class StormQuerySet(QuerySet):
 
-    Specifically, it allows any key starting with '_', it does not treat
-    any keys in a special way (such as '_cls') and transparently escapes
-    forbidden BSON characters ('\0', '$' and '.') before saving.
-    """
+    def lookup(self, value):
+        lookup_fields = self._document._meta['lookup_fields']
 
-    def to_mongo(self, value, *args, **kwargs):
-        return escape_keys(value)
+        if value is None or not lookup_fields:
+            return None
 
-    def to_python(self, value):
-        return unescape_keys(value)
+        query = Q()
+        for key in lookup_fields:
+            query |= Q(**{key: value})
 
-    def lookup_member(self, member_name):
-        return member_name
+        return self.get(query)
 
-    def prepare_query_value(self, op, value):
-        if isinstance(value, str):
-            return StringField().prepare_query_value(op, value)
-        return super().prepare_query_value(op, self.to_mongo(value))
+
+class StormDocument(Document):
+
+    id = StormIdField(primary_key=True, required=True, null=False)
+
+    meta = {
+        'abstract': True,
+        'queryset_class': StormQuerySet,
+        'id_prefix': None,
+        'lookup_fields': ['id'],
+    }
+
+    def to_mongo(self, use_db_field=True, fields=None):
+        if not fields or 'id' in fields:
+            if self._data.get('id') is None:
+                id_field = self._fields['id']
+                self._data['id'] = id_field.generate(owner=self)
+        return super().to_mongo(use_db_field=use_db_field, fields=fields)
 
 
 class NameMixin:
@@ -291,7 +294,7 @@ class TypeMixin:
     }
 
 
-class AgentQuerySet(QuerySet):
+class AgentQuerySet(StormQuerySet):
 
     def expired(self):
         threshold = datetime.now() - Agent.HEARTBEAT_DURATION
@@ -305,17 +308,16 @@ class AgentQuerySet(QuerySet):
         super().delete(*args, **kwargs)
 
 
-class Agent(TypeMixin, Document):
+class Agent(TypeMixin, StormDocument):
 
     HEARTBEAT_DURATION = timedelta(seconds=60)
 
-    id = FancyIdField('agent')
     heartbeat = DateTimeField(default=datetime.now, required=True)
 
     meta = {
+        'id_prefix': 'agent-',
         'queryset_class': AgentQuerySet,
         'indexes': ['heartbeat'],
-        'lookup_fields': ['id'],
     }
 
     def delete(self):
@@ -326,7 +328,7 @@ class Agent(TypeMixin, Document):
         return str(self.pk)
 
 
-class Resource(TypeMixin, Document):
+class Resource(TypeMixin, StormDocument):
 
     STATUS_CHOICES = (
         ('unknown', 'Unknown'),
@@ -355,9 +357,8 @@ class Resource(TypeMixin, Document):
         ('error', 'Error'),
     )
 
-    id = FancyIdField('res')
     names = ListField(StringField(min_length=1), min_length=1, required=True)
-    owner = SmartReferenceField(Agent, required=True)
+    owner = StormReferenceField(Agent, required=True)
 
     parent = StringField(min_length=1, null=True)
     image = StringField(min_length=1, null=True)
@@ -369,15 +370,13 @@ class Resource(TypeMixin, Document):
     snapshot = EscapedDynamicField()
 
     meta = {
+        'id_prefix': 'res-',
         'indexes': [
             'names',
             'owner',
             'state',
         ],
-        'lookup_fields': [
-            'id',
-            'names',
-        ],
+        'lookup_fields': ['names'],
     }
 
     def clean(self):
@@ -418,18 +417,17 @@ class Service(NameMixin, EmbeddedDocument):
         return '{}[{}]'.format(self._instance, self.name)
 
 
-class Group(NameMixin, Document):
+class Group(NameMixin, StormDocument):
 
-    id = FancyIdField('group')
     name = StringField(min_length=1, required=True, unique=True)
     services = EmbeddedDocumentListField(Service)
 
     query = EscapedDynamicField(default=dict, required=True)
-    include = ListField(SmartReferenceField(Resource))
-    exclude = ListField(SmartReferenceField(Resource))
+    include = ListField(StormReferenceField(Resource))
+    exclude = ListField(StormReferenceField(Resource))
 
     meta = {
-        'lookup_fields': ['id'],
+        'id_prefix': 'group-',
     }
 
     def save(self, *args, write_concern=None, **kwargs):
@@ -467,7 +465,7 @@ class Group(NameMixin, Document):
 
 class ServiceReference(EmbeddedDocument):
 
-    group = SmartReferenceField(Group, required=True)
+    group = StormReferenceField(Group, required=True)
     service_name = StringField(min_length=1, required=True)
 
     @property
@@ -487,7 +485,7 @@ class ServiceReference(EmbeddedDocument):
 
 class ComponentLink(EmbeddedDocument):
 
-    from_component = SmartReferenceField(Group, required=True)
+    from_component = StormReferenceField(Group, required=True)
     to_service = EmbeddedDocumentField(ServiceReference, required=True)
 
     def clean(self):
@@ -500,15 +498,14 @@ class ComponentLink(EmbeddedDocument):
         return '{} -> {}'.format(self.from_component, self.to_service)
 
 
-class Application(NameMixin, Document):
+class Application(NameMixin, StormDocument):
 
-    id = FancyIdField('app')
-    components = ListField(SmartReferenceField(Group))
+    components = ListField(StormReferenceField(Group))
     links = EmbeddedDocumentListField(ComponentLink)
     expose = EmbeddedDocumentListField(ServiceReference)
 
     meta = {
-        'lookup_fields': ['id'],
+        'id_prefix': 'app-',
     }
 
 
@@ -517,20 +514,19 @@ class ProcedureMixin:
     content = StringField(null=True)
     options = EscapedDynamicField(default=dict)
     params = EscapedDynamicField(default=dict)
-    target = SmartReferenceField(Resource, null=True)
+    target = StormReferenceField(Resource, null=True)
 
 
-class Procedure(NameMixin, TypeMixin, ProcedureMixin, Document):
+class Procedure(NameMixin, TypeMixin, ProcedureMixin, StormDocument):
 
-    id = FancyIdField('proc')
     content = StringField(required=True)
 
     meta = {
-        'lookup_fields': ['id'],
+        'id_prefix': 'proc-',
     }
 
 
-class Trigger(TypeMixin, ProcedureMixin, Document):
+class Trigger(TypeMixin, ProcedureMixin, StormDocument):
 
     STATUS_CHOICES = (
         ('pending', 'Pending'),
@@ -539,23 +535,22 @@ class Trigger(TypeMixin, ProcedureMixin, Document):
         ('error', 'Error'),
     )
 
-    id = FancyIdField('trig')
-    owner = SmartReferenceField(Agent, null=True)
+    owner = StormReferenceField(Agent, null=True)
     status = StringField(choices=STATUS_CHOICES, default='pending', required=True)
 
     type = StringField(min_length=1, null=True)
-    procedure = SmartReferenceField(Procedure, null=True)
+    procedure = StormReferenceField(Procedure, null=True)
     result = EscapedDynamicField(default=dict, required=True)
 
     created = DateTimeField(default=datetime.now, required=True)
 
     meta = {
+        'id_prefix': 'trig-',
         'indexes': [
             'created',
             'owner',
         ],
         'ordering': ['created'],
-        'lookup_fields': ['id'],
     }
 
     def clean(self):
