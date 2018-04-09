@@ -364,7 +364,7 @@ class Resource(TypeMixin, StormDocument):
     parent = StringField(min_length=1, null=True)
     image = StringField(min_length=1, null=True)
 
-    status = StringField(choices=STATUS_CHOICES, required=True)
+    status = StringField(choices=STATUS_CHOICES, default='unknown', required=True)
     health = StringField(choices=HEALTH_CHOICES, default='unknown', required=True)
     state = StringField(choices=STATE_CHOICES, required=True)
 
