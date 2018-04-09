@@ -375,6 +375,8 @@ class Resource(TypeMixin, StormDocument):
         'indexes': [
             'names',
             'owner',
+            'status',
+            'health',
             'state',
         ],
         'lookup_fields': ['names'],
