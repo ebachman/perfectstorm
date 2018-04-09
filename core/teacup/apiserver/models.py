@@ -337,6 +337,7 @@ class Resource(TypeMixin, StormDocument):
         ('starting', 'Starting'),
         ('running', 'Running'),
         ('updating', 'Updating'),
+        ('updated', 'Updated'),
         ('stopping', 'Stopped'),
         ('stopped', 'Stopped'),
         ('error', 'Error'),
