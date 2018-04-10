@@ -32,6 +32,7 @@ import json
 import threading
 
 from ..exceptions import APINotFoundError, ObjectNotFound, MultipleObjectsReturned
+from .fields import StringField
 from .session import current_session
 
 
@@ -269,7 +270,9 @@ class ModelMeta(type):
 
 class Model(metaclass=ModelMeta):
 
-    def __init__(self, data=None, pk=None, session=None, **kwargs):
+    id = StringField(null=True)
+
+    def __init__(self, data=None, session=None, **kwargs):
         super().__init__()
 
         non_field_kwargs = [key for key in kwargs if key not in self._fields]
@@ -291,30 +294,11 @@ class Model(metaclass=ModelMeta):
             if key in self._fields:
                 setattr(self, key, value)
 
-        if pk is not None:
-            if not self._primary_keys:
-                raise TypeError('No primary key fields defined')
-            name = self._primary_keys[0]
-            setattr(self, name, pk)
-
-    @property
-    def pk(self):
-        for name in self._primary_keys:
-            value = getattr(self, name)
-            if value is not None:
-                if isinstance(value, (list, tuple)):
-                    if value:
-                        return value[0]
-                else:
-                    return value
-        return None
-
     @property
     def url(self):
-        object_id = self.pk
-        if object_id is None:
+        if self.id is None:
             raise AttributeError('No ID has been set')
-        return self.objects.url / object_id
+        return self.objects.url / self.id
 
     def reload(self, session=None):
         """Fetch the data from the API server for this object."""
@@ -323,7 +307,7 @@ class Model(metaclass=ModelMeta):
         try:
             response_data = session.get(self.url)
         except APINotFoundError as exc:
-            raise ObjectNotFound(self.pk)
+            raise ObjectNotFound(self.id)
         self._data = response_data
 
     def save(self, validate=True, session=None):
@@ -338,7 +322,7 @@ class Model(metaclass=ModelMeta):
         if session is None:
             session = self._session
 
-        if self.pk is not None:
+        if self.id is not None:
             # If an ID is defined, try to update
             try:
                 self._update(session)
@@ -358,7 +342,7 @@ class Model(metaclass=ModelMeta):
         try:
             response_data = session.put(self.url, json=self._data)
         except APINotFoundError as exc:
-            raise ObjectNotFound(self.pk)
+            raise ObjectNotFound(self.id)
         self._data = response_data
 
     def delete(self, session=None):
@@ -369,7 +353,7 @@ class Model(metaclass=ModelMeta):
         try:
             session.delete(self.url)
         except APINotFoundError as exc:
-            raise ObjectNotFound(self.pk)
+            raise ObjectNotFound(self.id)
 
     def validate(self, skip_fields=None):
         cls = self.__class__
@@ -382,7 +366,7 @@ class Model(metaclass=ModelMeta):
                 field.validate(value)
 
     def __str__(self):
-        return str(self.pk)
+        return str(self.id)
 
     def __repr__(self):
         return '<%s: %s>' % (self.__class__.__name__, str(self))

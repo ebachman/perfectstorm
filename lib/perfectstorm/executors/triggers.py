@@ -73,7 +73,7 @@ class ProcedureExecutor(TriggerExecutor):
         self.run_procedure(self.procedure)
 
     def get_procedure(self, trigger):
-        procedure = Procedure(pk=trigger.procedure)
+        procedure = Procedure(id=trigger.procedure)
         procedure.reload()
 
         # XXX procedure.options.update(trigger.options)

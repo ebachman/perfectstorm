@@ -61,7 +61,6 @@ class Agent(Model):
 
     _path = 'v1/agents'
 
-    id = StringField(primary_key=True)
     type = StringField()
 
     def __init__(self, *args, **kwargs):
@@ -73,9 +72,8 @@ class Resource(Model):
 
     _path = 'v1/resources'
 
-    id = StringField(primary_key=True)
     type = StringField()
-    names = ListField(StringField(), primary_key=True)
+    names = ListField(StringField())
     owner = StringField()
 
     image = StringField(null=True)
@@ -114,8 +112,7 @@ class Group(Model):
 
     _path = 'v1/groups'
 
-    id = StringField(primary_key=True)
-    name = StringField(primary_key=True)
+    name = StringField(null=True)
 
     query = DictField()
     services = ListField(DictField())
@@ -132,8 +129,7 @@ class Application(Model):
 
     _path = 'v1/apps'
 
-    id = StringField(primary_key=True)
-    name = StringField(primary_key=True)
+    name = StringField(null=True)
 
     components = ListField(StringField())
     links = ListField(DictField())
@@ -152,9 +148,8 @@ class Procedure(ProcedureMixin, Model):
 
     _path = 'v1/procedures'
 
-    id = StringField(primary_key=True)
-    name = StringField(primary_key=True)
     type = StringField()
+    name = StringField(null=True)
 
 
 class TriggerHandler:
@@ -179,7 +174,6 @@ class Trigger(ProcedureMixin, Model):
 
     _path = 'v1/triggers'
 
-    id = StringField(primary_key=True)
     type = StringField(null=True)
     owner = StringField(read_only=True)
     status = StringField(read_only=True)
@@ -249,4 +243,4 @@ class Trigger(ProcedureMixin, Model):
                 exc_info.get('traceback'),
             )
 
-        raise TriggerError(self.pk, trigger=self) from parent_exception
+        raise TriggerError(self.id, trigger=self) from parent_exception
