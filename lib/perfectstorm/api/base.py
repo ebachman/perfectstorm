@@ -217,39 +217,6 @@ class Manager:
     def get(self, *args, **kwargs):
         return self.filter(*args, **kwargs).get()
 
-    def get_or_create(self, *args, defaults=None, **kwargs):
-        data = dict(*args, **kwargs)
-
-        try:
-            # TODO escape query
-            obj = self.get(data)
-            created = False
-        except ObjectNotFound:
-            if defaults is not None:
-                data.update(defaults)
-            obj = self.model(**data)
-            obj.save()
-            created = True
-
-        return obj, created
-
-    def update_or_create(self, *args, defaults=None, **kwargs):
-        data = dict(*args, **kwargs)
-
-        try:
-            # TODO escape query
-            obj = self.get(data)
-            created = False
-        except ObjectNotFound:
-            obj = self.model(**defaults)
-            created = True
-
-        for key, value in data.items():
-            setattr(obj, key, value)
-        obj.save()
-
-        return obj, created
-
 
 class ModelMeta(type):
 
