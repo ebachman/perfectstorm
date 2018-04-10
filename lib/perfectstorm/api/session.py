@@ -73,23 +73,12 @@ def connect(host=None, port=None):
 
 class UrlPath:
 
-    def __new__(cls, url):
+    def __init__(self, url):
         if isinstance(url, UrlPath):
             url = str(url)
         if not isinstance(url, str):
-            raise TypeError('Expected a string or UrlPath object, got {!r}'.format(url))
-        return super().__new__(cls)
-
-    def __init__(self, url):
+            raise TypeError('Expected a string or UrlPath object, got {!r}'.format(type(url).__name__))
         self._url = url.rstrip('/')
-
-    def join(self, path, quote=False):
-        if quote:
-            path = urllib.parse.quote(path)
-        else:
-            path = path.strip('/')
-        suburl = urllib.parse.urljoin(self._url + '/', path)
-        return self.__class__(suburl)
 
     def params(self, *args, **kwargs):
         new_query_params = dict(*args, **kwargs)
@@ -107,11 +96,17 @@ class UrlPath:
         return self.__class__(url)
 
     def __truediv__(self, other):
-        if isinstance(other, UrlPath):
-            other = str(other)
-        if not isinstance(other, str):
+        if not isinstance(other, (str, UrlPath)):
             return NotImplemented
-        return self.join(other)
+
+        left = self._url + '/'
+        if isinstance(other, str):
+            right = urllib.parse.quote(other)
+        else:
+            right = str(other)
+
+        newurl = urllib.parse.urljoin(left, right)
+        return self.__class__(newurl)
 
     def __str__(self):
         return self._url

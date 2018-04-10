@@ -314,7 +314,7 @@ class Model(metaclass=ModelMeta):
         object_id = self.pk
         if object_id is None:
             raise AttributeError('No ID has been set')
-        return self.objects.url.join(object_id, quote=True)
+        return self.objects.url / object_id
 
     def reload(self, session=None):
         """Fetch the data from the API server for this object."""
