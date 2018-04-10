@@ -3,10 +3,113 @@ import pytest
 from perfectstorm import Resource
 from perfectstorm.exceptions import MultipleObjectsReturned, ObjectNotFound
 
+from .stubs import IDENTIFIER, PLACEHOLDER
+from .test_create import BaseTestDocumentCreationWithAgent
+
 
 def assert_resources_count(expected_count, **kwargs):
     resource_set = Resource.objects.filter(**kwargs)
     assert len(resource_set) == expected_count
+
+
+class TestCreate(BaseTestDocumentCreationWithAgent):
+
+    model = Resource
+
+    default_resource = {
+        'id': IDENTIFIER,
+        'type': PLACEHOLDER,
+        'owner': PLACEHOLDER,
+        'names': [],
+        'parent': None,
+        'image': None,
+        'status': 'unknown',
+        'health': 'unknown',
+        'snapshot': {},
+    }
+
+    valid_data = [
+        (
+            {'type': 'test', 'owner': PLACEHOLDER},
+            {**default_resource, 'type': 'test'},
+        ),
+        (
+            {'type': 'test', 'names': None, 'owner': PLACEHOLDER},
+            {**default_resource, 'type': 'test'},
+        ),
+        (
+            {'type': 'test', 'names': [], 'owner': PLACEHOLDER},
+            {**default_resource, 'type': 'test'},
+        ),
+        (
+            {'type': 'test', 'names': ['woot'], 'owner': PLACEHOLDER},
+            {**default_resource, 'type': 'test', 'names': ['woot']},
+        ),
+        (
+            {'type': 'test', 'names': ['woot', 'waat', 'weet'], 'owner': PLACEHOLDER},
+            {**default_resource, 'type': 'test', 'names': ['woot', 'waat', 'weet']},
+        ),
+        (
+            {**default_resource, 'type': 'test'},
+            {**default_resource, 'type': 'test'},
+        ),
+    ]
+
+    invalid_data = [
+        # Missing required fields
+
+        (
+            {},
+            'type: field cannot be None',
+            {'owner': ['This field is required.'],
+             'type': ['This field is required.']},
+        ),
+        (
+            {'type': 'test'},
+            'owner: field cannot be None',
+            {'owner': ['This field is required.']},
+        ),
+        (
+            {'owner': PLACEHOLDER},
+            'type: field cannot be None',
+            {'type': ['This field is required.']},
+        ),
+
+        # Null fields
+
+        (
+            {'type': None, 'names': ['namez'], 'owner': PLACEHOLDER},
+            'type: field cannot be None',
+            {'type': ['This field may not be null.']},
+        ),
+        (
+            {'type': 'typez', 'names': [None], 'owner': PLACEHOLDER},
+            'names.[]: field cannot be None',
+            {'names': ['This field may not be null.']},
+        ),
+
+        # Empty fields
+
+        (
+            {'type': '', 'names': ['namez'], 'owner': PLACEHOLDER},
+            'type: field cannot be blank',
+            {'type': ['This field may not be blank.']},
+        ),
+        (
+            {'type': 'typez', 'names': [''], 'owner': PLACEHOLDER},
+            'names: field cannot be blank',
+            {'names': ['This field may not be blank.']},
+        ),
+    ]
+
+    invalid_server_only_data = [
+        # Invalid owner
+
+        (
+            {'type': 'test', 'owner': 'fake'},
+            {'owner': ['Document with id=fake does not exist.']},
+        ),
+    ]
 
 
 class TestUpdate:
