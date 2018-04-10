@@ -349,7 +349,7 @@ class Resource(TypeMixin, StormDocument):
         ('unhealthy', 'Unhealthy'),
     )
 
-    names = ListField(StringField(min_length=1), min_length=1, required=True)
+    names = ListField(StringField(min_length=1))
     owner = StormReferenceField(Agent, required=True)
 
     parent = StringField(min_length=1, null=True)
