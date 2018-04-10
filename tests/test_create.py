@@ -104,23 +104,25 @@ class BaseTestDocumentCreation:
 class BaseTestDocumentCreationWithAgent(BaseTestDocumentCreation):
 
     def test_client_create(self, agent, input_data, expected_data):
-        self.set_owner(agent, input_data)
-        self.set_owner(agent, expected_data)
+        input_data = self.set_owner(agent, input_data)
+        expected_data = self.set_owner(agent, expected_data)
         super().test_client_create(input_data, expected_data)
 
     def test_server_create(self, api_session, agent, input_data, expected_data):
-        self.set_owner(agent, input_data)
-        self.set_owner(agent, expected_data)
+        input_data = self.set_owner(agent, input_data)
+        expected_data = self.set_owner(agent, expected_data)
         super().test_server_create(api_session, input_data, expected_data)
 
     def test_client_validation(self, agent, input_data, expected_error):
-        self.set_owner(agent, input_data)
+        input_data = self.set_owner(agent, input_data)
         super().test_client_validation(input_data, expected_error)
 
     def test_server_validation(self, api_session, agent, input_data, expected_error):
-        self.set_owner(agent, input_data)
+        input_data = self.set_owner(agent, input_data)
         super().test_server_validation(api_session, input_data, expected_error)
 
     def set_owner(self, agent, data):
         if data.get('owner') is PLACEHOLDER:
+            data = data.copy()
             data['owner'] = agent.id
+        return data
