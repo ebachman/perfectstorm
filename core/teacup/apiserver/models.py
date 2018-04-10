@@ -404,11 +404,6 @@ class Group(NameMixin, StormDocument):
         'id_prefix': 'group-',
     }
 
-    def save(self, *args, write_concern=None, **kwargs):
-        if write_concern is None:
-            write_concern = {'w': 1, 'check_keys': False}
-        return super().save(*args, write_concern=write_concern, **kwargs)
-
     def members(self, filter=None):
         query = self.query
 
