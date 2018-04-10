@@ -33,7 +33,6 @@ from rest_framework.serializers import (
     ListField,
     Serializer,
     SlugField,
-    SlugRelatedField,
 )
 
 from rest_framework_mongoengine.fields import ReferenceField
@@ -140,7 +139,7 @@ class ApplicationSerializer(DocumentSerializer):
         'unknown_service': 'Service {service} is not part of component {component}',
     }
 
-    components = SlugRelatedField(many=True, slug_field='name', queryset=Group.objects.all())
+    components = ListField(child=StormReferenceField(Group))
 
     links = ComponentLinkSerializer(many=True, allow_empty=True)
     expose = ExposedServiceSerializer(many=True, allow_empty=True)
