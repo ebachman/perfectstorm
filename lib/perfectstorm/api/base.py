@@ -215,6 +215,12 @@ class Manager:
         return Collection(model=self.model, query=query, session=self._session)
 
     def get(self, *args, **kwargs):
+        if not kwargs and len(args) == 1 and isinstance(args[0], str):
+            identifier = args[0]
+            obj = self.model(id=identifier)
+            obj.reload()
+            return obj
+
         return self.filter(*args, **kwargs).get()
 
 

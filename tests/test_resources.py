@@ -77,23 +77,23 @@ class TestRetrieval:
 
     def test_retrieve_by_id(self, resources):
         for res in resources:
-            Resource.objects.get(id=res.id)
+            Resource.objects.get(res.id)
 
     def test_retrieve_by_invalid_id(self, resources):
         with pytest.raises(ObjectNotFound):
-            Resource.objects.get(id='unexistent')
+            Resource.objects.get('uneistent')
 
     def test_retrieve_by_name(self, resources):
         for res in resources:
             for name in res.names:
                 if name == 'common-name':
                     continue
-                Resource.objects.get(names=name)
+                Resource.objects.get(name)
 
     def test_retrieve_by_invalid_name(self, resources):
         with pytest.raises(ObjectNotFound):
-            Resource.objects.get(names='unexistent')
+            Resource.objects.get('unexistent')
 
     def test_retrieve_by_common_name(self, resources):
-        with pytest.raises(MultipleObjectsReturned):
-            Resource.objects.get(names='common-name')
+        with pytest.raises(ObjectNotFound):
+            Resource.objects.get('common-name')
