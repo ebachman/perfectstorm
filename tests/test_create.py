@@ -1,22 +1,10 @@
-import re
-
 import pytest
 
 from perfectstorm import Agent, Group, Resource
 from perfectstorm.api import Heartbeat
 from perfectstorm.exceptions import APIRequestError, ValidationError
 
-
-class PlaceholderType:
-
-    def __eq__(self, other):
-        return False
-
-    def __repr__(self):
-        return 'PLACEHOLDER'
-
-
-PLACEHOLDER = PlaceholderType()
+from .stubs import ANY, IDENTIFIER, PLACEHOLDER
 
 
 class BaseTestDocumentCreation:
@@ -93,12 +81,8 @@ class BaseTestDocumentCreation:
 
     def check_object_after_save(self, obj, input_data, expected_data):
         assert obj.id is not None
-        assert re.match('^[a-z]+-[0-9A-Za-z]{22}$', obj.id)
 
-        actual_data = {
-            key: getattr(obj, key)
-            for key in expected_data
-        }
+        actual_data = obj._data
         assert actual_data == expected_data
 
     def check_response_after_save(self, input_data, expected_data, response_data):
@@ -151,7 +135,7 @@ class TestAgentCreation(BaseTestDocumentCreation):
     valid_data = [
         (
             {'type': 'test'},
-            {'type': 'test'},
+            {'id': IDENTIFIER, 'type': 'test', 'heartbeat': ANY},
         ),
     ]
 
@@ -169,6 +153,7 @@ class TestResourceCreation(BaseTestDocumentCreationWithAgent):
     model = Resource
 
     default_resource = {
+        'id': IDENTIFIER,
         'type': PLACEHOLDER,
         'owner': PLACEHOLDER,
         'names': [],
@@ -268,6 +253,7 @@ class TestGroupCreation(BaseTestDocumentCreation):
     model = Group
 
     default_group = {
+        'id': IDENTIFIER,
         'name': None,
         'query': {},
         'services': [],
