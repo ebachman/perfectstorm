@@ -1,7 +1,7 @@
 import pytest
 
 from perfectstorm import Resource
-from perfectstorm.exceptions import MultipleObjectsReturned, ObjectNotFound
+from perfectstorm.exceptions import ObjectNotFound
 
 from .stubs import IDENTIFIER, PLACEHOLDER
 from .test_create import BaseTestDocumentCreationWithAgent
