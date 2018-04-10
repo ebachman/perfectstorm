@@ -4,7 +4,7 @@ from .stubs import ANY, IDENTIFIER
 from .test_create import BaseTestDocumentCreation
 
 
-class TestAgentCreation(BaseTestDocumentCreation):
+class TestCreate(BaseTestDocumentCreation):
 
     model = Agent
 

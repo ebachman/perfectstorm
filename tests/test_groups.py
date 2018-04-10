@@ -7,7 +7,7 @@ from .stubs import IDENTIFIER
 from .test_create import BaseTestDocumentCreation
 
 
-class TestGroupCreation(BaseTestDocumentCreation):
+class TestCreate(BaseTestDocumentCreation):
 
     model = Group
 
