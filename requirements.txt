@@ -13,3 +13,6 @@ sphinx >= 1.6, < 1.7
 
 # requirements for scripts/lint
 pyflakes
+
+# requirements for tests
+pytest >= 3.5, < 3.6
