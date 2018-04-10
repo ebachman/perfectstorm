@@ -163,11 +163,6 @@ class TestAgentCreation(BaseTestDocumentCreation):
         ),
     ]
 
-    def check_object_after_save(self, obj, input_data, expected_data):
-        super().check_object_after_save(obj, input_data, expected_data)
-        assert obj.heartbeat is not None
-        assert isinstance(obj.heartbeat, Heartbeat)
-
 
 class TestResourceCreation(BaseTestDocumentCreationWithAgent):
 
