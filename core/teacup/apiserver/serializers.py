@@ -37,6 +37,7 @@ from rest_framework.serializers import (
 
 from rest_framework_mongoengine.fields import ReferenceField
 from rest_framework_mongoengine.serializers import DocumentSerializer, EmbeddedDocumentSerializer
+from rest_framework_mongoengine.validators import UniqueValidator
 
 from teacup.apiserver.models import (
     Agent,
@@ -97,6 +98,8 @@ class ResourceSerializer(DocumentSerializer):
 
 
 class GroupSerializer(DocumentSerializer):
+
+    name = CharField(allow_blank=False, allow_null=True, required=False, validators=[UniqueValidator(Group.objects.all())])
 
     query = EscapedDynamicField(default=dict)
 

@@ -273,7 +273,7 @@ class StormDocument(Document):
 
 class NameMixin:
 
-    name = StringField(min_length=1, unique=True, required=True)
+    name = StringField(min_length=1, unique=True, null=True, sparse=True)
 
     meta = {
         'indexes': ['name'],
@@ -281,7 +281,7 @@ class NameMixin:
     }
 
     def __str__(self):
-        return self.name
+        return self.name if self.name is not None else self.id
 
 
 class TypeMixin:
@@ -394,7 +394,6 @@ class Service(NameMixin, EmbeddedDocument):
 
 class Group(NameMixin, StormDocument):
 
-    name = StringField(min_length=1, required=True, unique=True)
     services = EmbeddedDocumentListField(Service)
 
     query = EscapedDynamicField(default=dict, required=True)
