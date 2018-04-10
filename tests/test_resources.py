@@ -58,7 +58,7 @@ class TestCreate(BaseTestDocumentCreationWithAgent):
                  ]},
             ),
             (
-                {**self.default_resource, 'type': 'test'},
+                {**self.default_resource, 'id': None, 'type': 'test'},
                 {**self.default_resource, 'type': 'test'},
             ),
         ]
