@@ -31,6 +31,9 @@ class RegexMatcher:
             return NotImplemented
         return self.regex.match(other) is not None
 
+    def __repr__(self):
+        return '{}({!r})'.format(self.__class__.__name__, self.regex.pattern)
+
 
 ANY = AnyType()
 PLACEHOLDER = PlaceholderType()
