@@ -272,20 +272,20 @@ class Model(metaclass=ModelMeta):
     def __init__(self, data=None, pk=None, session=None, **kwargs):
         super().__init__()
 
-        if data is None:
-            data = {}
-        if kwargs:
-            data = dict(data, **kwargs)
-
-        non_field_kwargs = [key for key in data if key not in self._fields]
+        non_field_kwargs = [key for key in kwargs if key not in self._fields]
         if non_field_kwargs:
-            raise TypeError('Keys do not map to fields: %r' % non_field_kwargs)
+            raise TypeError('__init__() got an unexpected keyword argument {!r}'.format(non_field_kwargs))
 
         if session is None:
             session = current_session()
         self._session = session
 
         self._data = {}
+
+        if data is None:
+            data = {}
+        if kwargs:
+            data = dict(data, **kwargs)
 
         for key, value in data.items():
             if key in self._fields:
