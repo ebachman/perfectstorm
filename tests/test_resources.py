@@ -3,7 +3,7 @@ import pytest
 from perfectstorm import Resource
 from perfectstorm.exceptions import ObjectNotFound
 
-from .stubs import IDENTIFIER, PLACEHOLDER
+from .stubs import IDENTIFIER, PLACEHOLDER, random_name
 from .test_create import BaseTestDocumentCreationWithAgent
 
 
@@ -28,32 +28,40 @@ class TestCreate(BaseTestDocumentCreationWithAgent):
         'snapshot': {},
     }
 
-    valid_data = [
-        (
-            {'type': 'test', 'owner': PLACEHOLDER},
-            {**default_resource, 'type': 'test'},
-        ),
-        (
-            {'type': 'test', 'names': None, 'owner': PLACEHOLDER},
-            {**default_resource, 'type': 'test'},
-        ),
-        (
-            {'type': 'test', 'names': [], 'owner': PLACEHOLDER},
-            {**default_resource, 'type': 'test'},
-        ),
-        (
-            {'type': 'test', 'names': ['woot'], 'owner': PLACEHOLDER},
-            {**default_resource, 'type': 'test', 'names': ['woot']},
-        ),
-        (
-            {'type': 'test', 'names': ['woot', 'waat', 'weet'], 'owner': PLACEHOLDER},
-            {**default_resource, 'type': 'test', 'names': ['woot', 'waat', 'weet']},
-        ),
-        (
-            {**default_resource, 'type': 'test'},
-            {**default_resource, 'type': 'test'},
-        ),
-    ]
+    @property
+    def valid_data(self):
+        # This is a property so that random_name() can return a new value
+        # every time this attribute is accessed.
+        return [
+            (
+                {'type': 'test', 'owner': PLACEHOLDER},
+                {**self.default_resource, 'type': 'test'},
+            ),
+            (
+                {'type': 'test', 'owner': PLACEHOLDER, 'names': None},
+                {**self.default_resource, 'type': 'test'},
+            ),
+            (
+                {'type': 'test', 'owner': PLACEHOLDER, 'names': []},
+                {**self.default_resource, 'type': 'test'},
+            ),
+            (
+                {'type': 'test', 'owner': PLACEHOLDER, 'names': [random_name()]},
+                {**self.default_resource, 'type': 'test', 'names': [random_name.last]},
+            ),
+            (
+                {'type': 'test', 'owner': PLACEHOLDER, 'names': [
+                    random_name(1), random_name(2), random_name(3),
+                 ]},
+                {**self.default_resource, 'type': 'test', 'names': [
+                    random_name.recall(1), random_name.recall(2), random_name.recall(3),
+                 ]},
+            ),
+            (
+                {**self.default_resource, 'type': 'test'},
+                {**self.default_resource, 'type': 'test'},
+            ),
+        ]
 
     invalid_data = [
         # Missing required fields

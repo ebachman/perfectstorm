@@ -18,10 +18,12 @@ def api_session(request):
     return perfectstorm.connect(host, port)
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture(scope='session', autouse=True)
 def cleanup():
     import perfectstorm.api.base
     import perfectstorm.api.models
+
+    yield
 
     for name in perfectstorm.api.models.__all__:
         cls = getattr(perfectstorm.api.models, name)
