@@ -2,7 +2,8 @@ import re
 
 import pytest
 
-from perfectstorm import Resource
+from perfectstorm import Agent, Resource
+from perfectstorm.api import Heartbeat
 from perfectstorm.exceptions import APIRequestError, ValidationError
 
 
@@ -141,6 +142,31 @@ class BaseTestDocumentCreationWithAgent(BaseTestDocumentCreation):
     def set_owner(self, agent, data):
         if data.get('owner') is PLACEHOLDER:
             data['owner'] = agent.id
+
+
+class TestAgentCreation(BaseTestDocumentCreation):
+
+    model = Agent
+
+    valid_data = [
+        (
+            {'type': 'test'},
+            {'type': 'test'},
+        ),
+    ]
+
+    invalid_data = [
+        (
+            {},
+            'type: field cannot be None',
+            {'type': ['This field is required.']},
+        ),
+    ]
+
+    def check_object_after_save(self, obj, input_data, expected_data):
+        super().check_object_after_save(obj, input_data, expected_data)
+        assert obj.heartbeat is not None
+        assert isinstance(obj.heartbeat, Heartbeat)
 
 
 class TestResourceCreation(BaseTestDocumentCreationWithAgent):
