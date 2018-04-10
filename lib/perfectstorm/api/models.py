@@ -36,6 +36,16 @@ from .fields import StringField, ListField, DictField
 from .heartbeat import Heartbeat
 
 
+__all__ = [
+    'Agent',
+    'Application',
+    'Group',
+    'Procedure',
+    'Resource',
+    'Trigger',
+]
+
+
 def json_exception(exc_value):
     exc_type = type(exc_value)
     exc_tb = exc_value.__traceback__

@@ -18,6 +18,19 @@ def api_session(request):
     return perfectstorm.connect(host, port)
 
 
+@pytest.fixture(autouse=True)
+def cleanup():
+    import perfectstorm.api.base
+    import perfectstorm.api.models
+
+    for name in perfectstorm.api.models.__all__:
+        cls = getattr(perfectstorm.api.models, name)
+        if not isinstance(cls, type) or not issubclass(cls, perfectstorm.api.base.Model):
+            continue
+        for obj in cls.objects.all():
+            obj.delete()
+
+
 @pytest.fixture()
 def agent():
     from perfectstorm import Agent
