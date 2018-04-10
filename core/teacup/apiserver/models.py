@@ -270,6 +270,9 @@ class StormDocument(Document):
                 self._data['id'] = id_field.generate(owner=self)
         return super().to_mongo(use_db_field=use_db_field, fields=fields)
 
+    def __str__(self):
+        return str(self.id)
+
 
 class NameMixin:
 
@@ -322,9 +325,6 @@ class Agent(TypeMixin, StormDocument):
     def delete(self):
         cleanup_owned_documents([self.pk])
         super().delete()
-
-    def __str__(self):
-        return str(self.pk)
 
 
 class Resource(TypeMixin, StormDocument):
