@@ -324,6 +324,6 @@ class TestGroupCreation(BaseTestDocumentCreation):
         with pytest.raises(APIRequestError) as excinfo:
             group2.save()
 
-        assert excinfo.value.response.json == {
-            'name': ['Dupe'],
+        assert excinfo.value.response.json() == {
+            'name': ['This field must be unique.'],
         }
