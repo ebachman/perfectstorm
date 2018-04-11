@@ -103,6 +103,9 @@ class GroupSerializer(DocumentSerializer):
 
     query = EscapedDynamicField(default=dict)
 
+    include = ListField(child=CharField(), default=list)
+    exclude = ListField(child=CharField(), default=list)
+
     class Meta:
         model = Group
         fields = ('id', 'name', 'query', 'include', 'exclude', 'services')
