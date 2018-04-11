@@ -38,10 +38,6 @@ class TestCreate(BaseTestDocumentCreationWithAgent):
                 {**self.default_resource, 'type': 'test'},
             ),
             (
-                {'type': 'test', 'owner': PLACEHOLDER, 'names': None},
-                {**self.default_resource, 'type': 'test'},
-            ),
-            (
                 {'type': 'test', 'owner': PLACEHOLDER, 'names': []},
                 {**self.default_resource, 'type': 'test'},
             ),
@@ -116,6 +112,13 @@ class TestCreate(BaseTestDocumentCreationWithAgent):
         (
             {'type': 'test', 'owner': 'fake'},
             {'owner': ['Document with id=fake does not exist.']},
+        ),
+
+        # Wrong types
+
+        (
+            {'type': 'test', 'owner': PLACEHOLDER, 'names': None},
+            {'names': ['This field may not be null.']},
         ),
     ]
 
