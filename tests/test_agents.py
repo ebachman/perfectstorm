@@ -1,10 +1,10 @@
 from perfectstorm import Agent
 
+from .create import BaseTestCreate
 from .stubs import ANY, IDENTIFIER
-from .test_create import BaseTestDocumentCreation
 
 
-class TestCreate(BaseTestDocumentCreation):
+class TestCreate(BaseTestCreate):
 
     model = Agent
 

@@ -3,12 +3,12 @@ import pytest
 from perfectstorm import Group
 from perfectstorm.exceptions import APIRequestError
 
+from .create import BaseTestCreate
 from .stubs import IDENTIFIER, random_name
-from .test_create import BaseTestDocumentCreation
 from .test_resources import assert_resources_equal
 
 
-class TestCreate(BaseTestDocumentCreation):
+class TestCreate(BaseTestCreate):
 
     model = Group
 

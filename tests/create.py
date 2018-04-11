@@ -5,7 +5,7 @@ from perfectstorm.exceptions import APIRequestError, ValidationError
 from .stubs import PLACEHOLDER
 
 
-class BaseTestDocumentCreation:
+class BaseTestCreate:
 
     def pytest_generate_tests(self, metafunc):
         if metafunc.function.__name__ == 'test_client_create':
@@ -101,7 +101,7 @@ class BaseTestDocumentCreation:
         assert excinfo.value.response.json() == expected_error
 
 
-class BaseTestDocumentCreationWithAgent(BaseTestDocumentCreation):
+class BaseTestCreateWithAgent(BaseTestCreate):
 
     def test_client_create(self, agent, input_data, expected_data):
         input_data = self.set_owner(agent, input_data)

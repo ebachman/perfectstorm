@@ -3,8 +3,8 @@ import pytest
 from perfectstorm import Resource
 from perfectstorm.exceptions import ObjectNotFound
 
+from .create import BaseTestCreateWithAgent
 from .stubs import IDENTIFIER, PLACEHOLDER, random_name
-from .test_create import BaseTestDocumentCreationWithAgent
 
 
 def assert_resources_count(expected_count, **kwargs):
@@ -30,7 +30,7 @@ def assert_resources_equal(actual_resource_set, expected_resource_set):
         assert actual_resource._data == expected_resource._data
 
 
-class TestCreate(BaseTestDocumentCreationWithAgent):
+class TestCreate(BaseTestCreateWithAgent):
 
     model = Resource
 
