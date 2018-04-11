@@ -243,7 +243,7 @@ class StormQuerySet(QuerySet):
         lookup_fields = self._document._meta['lookup_fields']
 
         if value is None or not lookup_fields:
-            return None
+            raise self.DoesNotExist('{} matching query does not exist.'.format(self.__class__._meta.object_name))
 
         query = Q()
         for key in lookup_fields:
