@@ -101,7 +101,7 @@ class TestCreate(BaseTestDocumentCreationWithAgent):
         ),
         (
             {'type': 'typez', 'names': [''], 'owner': PLACEHOLDER},
-            'names: field cannot be blank',
+            'names.[]: field cannot be blank',
             {'names': ['This field may not be blank.']},
         ),
     ]

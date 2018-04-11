@@ -68,10 +68,18 @@ class Field:
 
 class StringField(Field):
 
+    def __init__(self, *args, blank=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.blank = blank
+
     def validate(self, value):
         super().validate(value)
-        if value is not None and not isinstance(value, str):
+        if value is None:
+            return
+        if not isinstance(value, str):
             raise ValidationError('expected a string, got {!r}'.format(value), field=self.name)
+        if not value and not self.blank:
+            raise ValidationError('field cannot be blank', field=self.name)
 
 
 class IntField(Field):
