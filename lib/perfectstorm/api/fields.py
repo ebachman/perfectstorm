@@ -71,7 +71,7 @@ class StringField(Field):
     def validate(self, value):
         super().validate(value)
         if value is not None and not isinstance(value, str):
-            raise ValidationError('expected a string, got %r' % value, field=self.name)
+            raise ValidationError('expected a string, got {!r}'.format(value), field=self.name)
 
 
 class IntField(Field):
@@ -79,7 +79,7 @@ class IntField(Field):
     def validate(self, value):
         super().validate(value)
         if value is not None and not isinstance(value, int):
-            raise ValidationError('expected an integer, got %r' % value, field=self.name)
+            raise ValidationError('expected an integer, got {!r}'.format(value), field=self.name)
 
 
 class ListField(Field):
@@ -101,7 +101,7 @@ class ListField(Field):
         super().validate(value)
         if value is not None:
             if not isinstance(value, (tuple, list)):
-                raise ValidationError('expected a list or tuple, got %r' % value, field=self.name)
+                raise ValidationError('expected a list or tuple, got {!r}'.format(value), field=self.name)
             for item in value:
                 self.subfield.validate(item)
 
@@ -116,7 +116,7 @@ class DictField(Field):
         super().validate(value)
 
         if value is not None and not isinstance(value, dict):
-            raise ValidationError('expected a dict, got %r' % value, field=self.name)
+            raise ValidationError('expected a dict, got {!r}'.format(value), field=self.name)
 
         visited = set()
 
@@ -132,10 +132,10 @@ class DictField(Field):
             elif isinstance(obj, dict):
                 for key, value in obj.items():
                     if not isinstance(key, str):
-                        raise ValidationError('dictionary keys must be strings, found %r' % key, field=self.name)
+                        raise ValidationError('dictionary keys must be strings, found {!r}'.format(key), field=self.name)
                     validate_inner(value)
             else:
-                raise ValidationError('unknown type: %r' % obj, field=self.name)
+                raise ValidationError('unknown type: {!r}'.format(obj), field=self.name)
             visited.remove(id(obj))
 
         validate_inner(value)
