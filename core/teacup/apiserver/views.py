@@ -32,14 +32,15 @@ from datetime import datetime
 
 from pymongo.errors import OperationFailure
 
+from django.http import Http404
+
 from rest_framework import status
 from rest_framework.decorators import detail_route
 from rest_framework.exceptions import APIException
 from rest_framework.response import Response
 
-from mongoengine.queryset import Q
+from mongoengine import DoesNotExist, MultipleObjectsReturned
 
-from rest_framework_mongoengine.generics import get_object_or_404
 from rest_framework_mongoengine.viewsets import ModelViewSet
 
 from teacup.apiserver.models import (
@@ -163,15 +164,13 @@ class MultiLookupMixin:
     lookup_url_kwarg = 'id'
 
     def get_object(self):
+        value = self.kwargs[self.lookup_url_kwarg]
         queryset = self.filter_queryset(self.get_queryset())
 
-        filter_query = Q()
-        value = self.kwargs[self.lookup_url_kwarg]
-
-        for field in queryset._document._meta['lookup_fields']:
-            filter_query |= Q(**{field: value})
-
-        return get_object_or_404(queryset, filter_query)
+        try:
+            return queryset.lookup(value)
+        except (DoesNotExist, MultipleObjectsReturned):
+            raise Http404
 
 
 class CleanupAgentsMixin:
