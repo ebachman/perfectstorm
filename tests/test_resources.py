@@ -211,3 +211,57 @@ class TestRetrieval:
     def test_retrieve_by_common_name(self, resources):
         with pytest.raises(ObjectNotFound):
             Resource.objects.get('common-name')
+
+
+class TestFiltering:
+
+    @pytest.mark.parametrize('query, filterfunc', [
+        (
+            {},
+            lambda res: True
+        ),
+        (
+            {'type': 'alpha'},
+            lambda res: res.type == 'alpha',
+        ),
+        (
+            {'type': {'$ne': 'alpha'}},
+            lambda res: res.type != 'alpha',
+        ),
+        (
+            {'image': None},
+            lambda res: res.image is None,
+        ),
+        (
+            {'image': {'$regex': '^library/nginx:1.13'}},
+            lambda res: res.image is not None and res.image.startswith('library/nginx:1.13'),
+        ),
+        (
+            {'$or': [{'type': 'alpha'}, {'type': 'beta'}]},
+            lambda res: res.type in ('alpha', 'beta'),
+        ),
+        (
+            {'$and': [{'type': 'alpha'}, {'image': 'library/mongo:latest'}]},
+            lambda res: res.type == 'alpha' and res.image == 'library/mongo:latest',
+        ),
+        (
+            {'$and': [{'type': 'alpha'}, {'type': 'beta'}]},
+            lambda res: False,
+        ),
+    ])
+    def test_filters(self, clean_resources, random_resources, query, filterfunc):
+        matched_resources = Resource.objects.filter(query)
+        expected_resources = list(filter(filterfunc, random_resources))
+
+        # Check whether the number of resources returned is correct
+        assert len(matched_resources) == len(expected_resources)
+
+        # Check whether the IDs returned are correct (i.e. there are no duplicates)
+        matched_resource_ids = {res.id for res in matched_resources}
+        expected_resource_ids = {res.id for res in expected_resources}
+        assert matched_resource_ids == expected_resource_ids
+
+        # Check whether the filter returned resources that correctly
+        # satisfy the conditions
+        for res in matched_resources:
+            assert filterfunc(res)

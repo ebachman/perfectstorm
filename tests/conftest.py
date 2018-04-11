@@ -52,3 +52,9 @@ def agent(request):
         return
 
     agent.delete()
+
+
+@pytest.fixture()
+def random_resources(agent):
+    from .samples import create_random_resources
+    return create_random_resources(agent)
