@@ -12,6 +12,24 @@ def assert_resources_count(expected_count, **kwargs):
     assert len(resource_set) == expected_count
 
 
+def assert_resources_equal(actual_resource_set, expected_resource_set):
+    actual_resource_map = {res.id: res for res in actual_resource_set}
+    expected_resource_map = {res.id: res for res in expected_resource_set}
+
+    # Check whether the number of resources returned is correct
+    assert len(actual_resource_set) == len(expected_resource_set)
+
+    # Check whether the IDs returned are correct (i.e. there are no duplicates)
+    assert len(actual_resource_map) == len(expected_resource_map)
+    assert actual_resource_map.keys() == expected_resource_map.keys()
+
+    # Check all the fields of the resources
+    for res_id in expected_resource_map:
+        actual_resource = actual_resource_map[res_id]
+        expected_resource = expected_resource_map[res_id]
+        assert actual_resource._data == expected_resource._data
+
+
 class TestCreate(BaseTestDocumentCreationWithAgent):
 
     model = Resource
@@ -252,16 +270,4 @@ class TestFiltering:
     def test_filters(self, random_resources, query, filterfunc):
         matched_resources = Resource.objects.filter(query)
         expected_resources = list(filter(filterfunc, random_resources))
-
-        # Check whether the number of resources returned is correct
-        assert len(matched_resources) == len(expected_resources)
-
-        # Check whether the IDs returned are correct (i.e. there are no duplicates)
-        matched_resource_ids = {res.id for res in matched_resources}
-        expected_resource_ids = {res.id for res in expected_resources}
-        assert matched_resource_ids == expected_resource_ids
-
-        # Check whether the filter returned resources that correctly
-        # satisfy the conditions
-        for res in matched_resources:
-            assert filterfunc(res)
+        assert_resources_equal(matched_resources, expected_resources)
