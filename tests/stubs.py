@@ -82,8 +82,11 @@ class RandomNameGenerator:
 
     def __init__(self):
         sequence = [
-            '-'.join(pair)
-            for pair in itertools.product(self._adjectives, self._names)
+            '-'.join(item)
+            for item in itertools.product(
+                self._adjectives,
+                self._adjectives,
+                self._names)
         ]
         random.shuffle(sequence)
         self._it = iter(sequence)
