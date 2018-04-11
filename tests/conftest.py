@@ -8,6 +8,9 @@ def pytest_addoption(parser):
     parser.addoption(
         '--api-server-port', action='store', type=int, default=8000,
         help='Host for the Perfect Storm API server')
+    parser.addoption(
+        '--no-cleanup', action='store_true',
+        help='Keep all API entities created during tests')
 
 
 @pytest.fixture(scope='session', autouse=True)
@@ -19,11 +22,14 @@ def api_session(request):
 
 
 @pytest.fixture(scope='session', autouse=True)
-def cleanup():
+def cleanup(request):
     import perfectstorm.api.base
     import perfectstorm.api.models
 
     yield
+
+    if request.config.getoption('--no-cleanup'):
+        return
 
     for name in perfectstorm.api.models.__all__:
         cls = getattr(perfectstorm.api.models, name)
@@ -34,12 +40,15 @@ def cleanup():
 
 
 @pytest.fixture()
-def agent():
+def agent(request):
     from perfectstorm import Agent
 
     agent = Agent(type='test')
     agent.save()
 
     yield agent
+
+    if request.config.getoption('--no-cleanup'):
+        return
 
     agent.delete()
