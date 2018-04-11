@@ -249,7 +249,7 @@ class TestFiltering:
             lambda res: False,
         ),
     ])
-    def test_filters(self, clean_resources, random_resources, query, filterfunc):
+    def test_filters(self, random_resources, query, filterfunc):
         matched_resources = Resource.objects.filter(query)
         expected_resources = list(filter(filterfunc, random_resources))
 

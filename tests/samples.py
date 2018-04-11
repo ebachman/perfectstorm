@@ -1,8 +1,14 @@
 import random
 
-from perfectstorm import Resource
+from perfectstorm import Agent, Resource
 
 from .stubs import random_name
+
+
+def create_agent():
+    agent = Agent(type='test')
+    agent.save()
+    return agent
 
 
 RESOURCE_TYPES = [
@@ -66,7 +72,9 @@ def make_resource(**kwargs):
 
 
 def create_random_resources(
-        agent, count=64, min_running_percent=0.6, min_healthy_percent=0.8):
+        count=64, min_running_percent=0.6, min_healthy_percent=0.8):
+    agent = create_agent()
+
     resources = []
 
     running_count = count * min_running_percent

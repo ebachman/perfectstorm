@@ -41,20 +41,13 @@ def cleanup(request):
 
 @pytest.fixture()
 def agent(request):
-    from perfectstorm import Agent
-
-    agent = Agent(type='test')
-    agent.save()
-
+    from .samples import create_agent
+    agent = create_agent()
     yield agent
-
-    if request.config.getoption('--no-cleanup'):
-        return
-
     agent.delete()
 
 
-@pytest.fixture()
-def random_resources(agent):
+@pytest.fixture(scope='session')
+def random_resources():
     from .samples import create_random_resources
-    return create_random_resources(agent)
+    return create_random_resources()
