@@ -90,6 +90,7 @@ class AgentSerializer(DocumentSerializer):
 class ResourceSerializer(DocumentSerializer):
 
     owner = StormReferenceField(Agent)
+    parent = StormReferenceField(Resource, allow_null=True, required=False)
     snapshot = EscapedDynamicField(default=dict)
 
     class Meta:

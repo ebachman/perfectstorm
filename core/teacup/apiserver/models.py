@@ -213,8 +213,14 @@ class StormReferenceField(BaseField):
     # TODO similar to LazyReferenceField.
 
     def __init__(self, document_type, **kwargs):
-        self.document_type = document_type
+        self._document_type = document_type
         super().__init__(**kwargs)
+
+    @property
+    def document_type(self):
+        if isinstance(self._document_type, str):
+            self._document_type = globals()[self._document_type]
+        return self._document_type
 
     def __get__(self, instance, owner):
         if instance is None:
@@ -352,7 +358,7 @@ class Resource(TypeMixin, StormDocument):
     names = ListField(StringField(min_length=1))
     owner = StormReferenceField(Agent, required=True)
 
-    parent = StringField(min_length=1, null=True)
+    parent = StormReferenceField('Resource', null=True)
     image = StringField(min_length=1, null=True)
 
     status = StringField(choices=STATUS_CHOICES, default='unknown', required=True)
