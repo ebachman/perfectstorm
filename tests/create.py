@@ -93,13 +93,15 @@ class BaseTestCreate:
     def check_client_error(self, obj, input_data, expected_error, excinfo):
         assert obj.id is None
         assert type(excinfo.value) is ValidationError
-        assert str(excinfo.value) == expected_error
+        assert str(excinfo.value) == expected_error, '{!r} != {!r}'.format(
+            str(excinfo.value), expected_error)
 
     def check_server_error(self, input_data, expected_error, excinfo):
         assert type(excinfo.value) is APIRequestError
         assert excinfo.value.response.status_code == 400
         actual_error = excinfo.value.response.json()
-        assert actual_error == expected_error, '{} != {}'.format(actual_error, expected_error)
+        assert actual_error == expected_error, '{!r} != {!r}'.format(
+            actual_error, expected_error)
 
 
 class BaseTestCreateWithAgent(BaseTestCreate):
