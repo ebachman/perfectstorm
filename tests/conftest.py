@@ -23,20 +23,24 @@ def api_session(request):
 
 @pytest.fixture(scope='session', autouse=True)
 def cleanup(request):
-    import perfectstorm.api.base
-    import perfectstorm.api.models
+    from perfectstorm import Agent, Application, Group, Procedure
 
     yield
 
     if request.config.getoption('--no-cleanup'):
         return
 
-    for name in perfectstorm.api.models.__all__:
-        cls = getattr(perfectstorm.api.models, name)
-        if not isinstance(cls, type) or not issubclass(cls, perfectstorm.api.base.Model):
-            continue
-        for obj in cls.objects.all():
-            obj.delete()
+    delete = []
+
+    delete.extend(Agent.objects.filter(type='test'))
+    delete.extend(Group.objects.all())
+    delete.extend(Application.objects.all())
+    delete.extend(Procedure.objects.all())
+    # No need to delete resources: they will be deleted
+    # automatically when deleting the agents
+
+    for obj in delete:
+        obj.delete()
 
 
 @pytest.fixture()
