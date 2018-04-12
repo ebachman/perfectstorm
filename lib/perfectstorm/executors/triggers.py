@@ -73,6 +73,9 @@ class ProcedureExecutor(TriggerExecutor):
         self.run_procedure(self.procedure)
 
     def get_procedure(self, trigger):
+        if trigger.procedure is None:
+            return trigger
+
         procedure = Procedure.objects.get(trigger.procedure)
 
         # XXX procedure.options.update(trigger.options)
