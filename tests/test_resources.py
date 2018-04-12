@@ -12,7 +12,25 @@ def assert_resources_count(expected_count, **kwargs):
     assert len(resource_set) == expected_count
 
 
+def exclude_stranger_resources(returned_resource_set, expected_resource_set):
+    """
+    Return a subset of `returned_resource_set` that contains only resources
+    created by the test suite.
+
+    Resources are filtering by comparing them with `expected_resource_set`:
+    if the owner matches, then they are considered as being created by the
+    test suite.
+    """
+    expected_owners = {res.owner for res in expected_resource_set}
+    return [
+        res for res in returned_resource_set
+        if res.owner in expected_owners
+    ]
+
+
 def assert_resources_equal(actual_resource_set, expected_resource_set):
+    actual_resource_set = exclude_stranger_resources(actual_resource_set, expected_resource_set)
+
     actual_resource_map = {res.id: res for res in actual_resource_set}
     expected_resource_map = {res.id: res for res in expected_resource_set}
 
