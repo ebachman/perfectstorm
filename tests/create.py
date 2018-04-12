@@ -98,7 +98,8 @@ class BaseTestCreate:
     def check_server_error(self, input_data, expected_error, excinfo):
         assert type(excinfo.value) is APIRequestError
         assert excinfo.value.response.status_code == 400
-        assert excinfo.value.response.json() == expected_error
+        actual_error = excinfo.value.response.json()
+        assert actual_error == expected_error, '{} != {}'.format(actual_error, expected_error)
 
 
 class BaseTestCreateWithAgent(BaseTestCreate):
