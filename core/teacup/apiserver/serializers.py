@@ -71,12 +71,22 @@ class StormReferenceField(ReferenceField):
         return value.id
 
 
-class EscapedDynamicField(Field):
+class EscapedDictField(Field):
 
-    def to_representation(self, value):
-        return value
+    default_error_messages = {
+        'wrong_type': 'Expected a JSON object.',
+    }
+
+    def __init__(self, *args, **kwargs):
+        kwargs.setdefault('default', dict)
+        super().__init__(*args, **kwargs)
 
     def to_internal_value(self, value):
+        if not isinstance(value, dict):
+            self.fail('wrong_type')
+        return value
+
+    def to_representation(self, value):
         return value
 
 
@@ -91,7 +101,7 @@ class ResourceSerializer(DocumentSerializer):
 
     owner = StormReferenceField(Agent)
     parent = StormReferenceField(Resource, allow_null=True, required=False)
-    snapshot = EscapedDynamicField(default=dict)
+    snapshot = EscapedDictField()
 
     class Meta:
         model = Resource
@@ -102,7 +112,7 @@ class GroupSerializer(DocumentSerializer):
 
     name = CharField(allow_blank=False, allow_null=True, required=False, validators=[UniqueValidator(Group.objects.all())])
 
-    query = EscapedDynamicField(default=dict)
+    query = EscapedDictField()
 
     include = ListField(child=CharField(), default=list)
     exclude = ListField(child=CharField(), default=list)
@@ -221,8 +231,8 @@ class ApplicationSerializer(DocumentSerializer):
 
 class ProcedureSerializer(DocumentSerializer):
 
-    options = EscapedDynamicField(default=dict)
-    params = EscapedDynamicField(default=dict)
+    options = EscapedDictField()
+    params = EscapedDictField()
     target = StormReferenceField(Resource, allow_null=True, required=False)
 
     class Meta:
@@ -235,9 +245,9 @@ class BaseTriggerSerializer(DocumentSerializer):
 
     procedure = StormReferenceField(Procedure, allow_null=True, required=False)
 
-    options = EscapedDynamicField(default=dict)
-    params = EscapedDynamicField(default=dict)
-    result = EscapedDynamicField(default=dict)
+    options = EscapedDictField()
+    params = EscapedDictField()
+    result = EscapedDictField()
     target = StormReferenceField(Resource, allow_null=True, required=False)
 
     class Meta:
@@ -265,4 +275,4 @@ class TriggerHandleSerializer(Serializer):
 
 class TriggerCompleteSerializer(Serializer):
 
-    result = EscapedDynamicField(default=dict)
+    result = EscapedDictField()

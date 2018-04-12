@@ -136,14 +136,24 @@ def unescape_keys(obj):
     return _replace_keys(obj, _unescape_key)
 
 
-class EscapedDynamicField(BaseField):
+class EscapedDictField(BaseField):
     r"""
-    A DynamicField-like field that allows any kind of keys in dictionaries.
+    A DictField-like field that allows any kind of keys in dictionaries.
 
     Specifically, it allows any key starting with '_', it does not treat
     any keys in a special way (such as '_cls') and transparently escapes
     forbidden BSON characters ('\0', '$' and '.') before saving.
     """
+
+    def __init__(self, *args, **kwargs):
+        kwargs.setdefault('default', dict)
+        super().__init__(*args, **kwargs)
+
+    def validate(self, value):
+        if not isinstance(value, dict):
+            self.error('Expected a dictionary, got {!r}'.format(
+                type(value).__name__))
+        super().validate(value)
 
     def to_mongo(self, value, *args, **kwargs):
         return escape_keys(value)
@@ -364,7 +374,7 @@ class Resource(TypeMixin, StormDocument):
     status = StringField(choices=STATUS_CHOICES, default='unknown', required=True)
     health = StringField(choices=HEALTH_CHOICES, default='unknown', required=True)
 
-    snapshot = EscapedDynamicField()
+    snapshot = EscapedDictField()
 
     meta = {
         'id_prefix': 'res-',
@@ -402,7 +412,7 @@ class Group(NameMixin, StormDocument):
 
     services = EmbeddedDocumentListField(Service)
 
-    query = EscapedDynamicField(default=dict, required=True)
+    query = EscapedDictField(required=True)
     include = ListField(StormReferenceField(Resource))
     exclude = ListField(StormReferenceField(Resource))
 
@@ -487,8 +497,8 @@ class Application(NameMixin, StormDocument):
 class ProcedureMixin:
 
     content = StringField(null=True)
-    options = EscapedDynamicField(default=dict)
-    params = EscapedDynamicField(default=dict)
+    options = EscapedDictField()
+    params = EscapedDictField()
     target = StormReferenceField(Resource, null=True)
 
 
@@ -515,7 +525,7 @@ class Trigger(TypeMixin, ProcedureMixin, StormDocument):
 
     type = StringField(min_length=1, null=True)
     procedure = StormReferenceField(Procedure, null=True)
-    result = EscapedDynamicField(default=dict, required=True)
+    result = EscapedDictField(required=True)
 
     created = DateTimeField(default=datetime.now, required=True)
 
