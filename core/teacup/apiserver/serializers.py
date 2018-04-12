@@ -223,7 +223,7 @@ class ProcedureSerializer(DocumentSerializer):
 
     options = EscapedDynamicField(default=dict)
     params = EscapedDynamicField(default=dict)
-    target = StormReferenceField(Resource, allow_null=True)
+    target = StormReferenceField(Resource, allow_null=True, required=False)
 
     class Meta:
         model = Procedure
@@ -233,12 +233,12 @@ class ProcedureSerializer(DocumentSerializer):
 
 class BaseTriggerSerializer(DocumentSerializer):
 
-    procedure = StormReferenceField(Procedure)
+    procedure = StormReferenceField(Procedure, allow_null=True, required=False)
 
     options = EscapedDynamicField(default=dict)
     params = EscapedDynamicField(default=dict)
     result = EscapedDynamicField(default=dict)
-    target = StormReferenceField(Resource, allow_null=True)
+    target = StormReferenceField(Resource, allow_null=True, required=False)
 
     class Meta:
         model = Trigger
