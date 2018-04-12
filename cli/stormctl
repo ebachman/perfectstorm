@@ -157,9 +157,7 @@ class SingleEntityCommand(EntityCommand):
         parser.add_argument('id')
 
     def get_object(self, client, model):
-        obj = model(pk=client.options.id)
-        obj.reload()
-        return obj
+        return model.objects.get(client.options.id)
 
 
 class MultipleEntitiesCommand(EntityCommand):
@@ -169,10 +167,8 @@ class MultipleEntitiesCommand(EntityCommand):
         parser.add_argument('id', nargs='+')
 
     def iter_objects(self, client, model):
-        for pk in client.options.id:
-            obj = model(pk=pk)
-            obj.reload()
-            yield obj
+        for item in client.options.id:
+            yield model.objects.get(item)
 
 
 class EntityImporter:
