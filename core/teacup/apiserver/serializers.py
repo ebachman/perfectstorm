@@ -68,7 +68,7 @@ class StormReferenceField(ReferenceField):
         return document.id
 
     def to_representation(self, value):
-        return self.pk_field.to_representation(value)
+        return value.id
 
 
 class EscapedDynamicField(Field):
