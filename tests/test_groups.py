@@ -65,6 +65,22 @@ class TestCreate(BaseTestCreate):
             ),
         ]
 
+    invalid_data = [
+        # Wrong types
+
+        (
+            {'query': 'hello'},
+            "query: expected a dict, got 'hello'",
+            {'query': ['Expected a JSON object.']},
+        ),
+
+        (
+            {'include': {'x': 'y'}},
+            "include: expected a list or tuple, got {'x': 'y'}",
+            {'include': ['Expected a list of items but got type "dict".']},
+        ),
+    ]
+
     def test_duplicate_names(self):
         group1 = Group(name=random_name())
         group2 = Group(name=random_name.last)
