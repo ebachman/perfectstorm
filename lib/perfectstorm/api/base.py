@@ -41,6 +41,45 @@ def json_compact(*args, **kwargs):
     return json.dumps(*args, **kwargs)
 
 
+def combine_queries(query1, query2):
+    if not query1:
+        return query2
+    if not query2:
+        return query1
+
+    all_keys = set(query1) | set(query2)
+    common_keys = set(query1) & set(query2)
+    uses_operators = any(key.startswith('$') for key in all_keys)
+
+    if not common_keys and not uses_operators:
+        # Merging: {'x': 1, 'y': 2} with {'a': 3, 'b': 4}
+        # Result: {'x': 1, 'y': 2, 'a': 3, 'b': 4}
+        return {**query1, **query2}
+
+    query1_and = (list(query1) == ['$and'])
+    query2_and = (list(query2) == ['$and'])
+
+    if query1_and and query2_and:
+        # Merging: {'$and': [...]} with {'$and': [...]}
+        # Result: {'$and': [...]}
+        return {'$and': query1['$and'] + query2['$and']}
+
+    if query1_and:
+        # Merging: {'$and': [...]} with {'x': 1, 'y': 2}
+        # Result: {'$and': [..., {'x': 1, 'y': 2}]}
+        return {'$and': query1['$and'] + [query2]}
+
+    if query2_and:
+        # Merging: {'x': 1, 'y': 2} with {'$and': [...]}
+        # Result: {'$and': [{'x': 1, 'y': 2}, ...]}
+        return {'$and': [query1] + query2['$and']}
+
+    # Merging: {'x': 1} with {'x': 2}
+    # Merging: {'$or': [...]} with {'$or': [...]}
+    # Result: {'$and': [{'$or': [...]}, {'$or': [...]}]}
+    return {'$and': [query1, query2]}
+
+
 class AbstractCollection(metaclass=abc.ABCMeta):
 
     def __init__(self, model):
@@ -51,11 +90,11 @@ class AbstractCollection(metaclass=abc.ABCMeta):
         raise NotImplementedError
 
     @abc.abstractmethod
-    def filter(self, *args, **kwargs):
+    def filter(self, **kwargs):
         raise NotImplementedError
 
     @abc.abstractmethod
-    def get(self, *args, **kwargs):
+    def get(self, **kwargs):
         raise NotImplementedError
 
     @abc.abstractmethod
@@ -71,13 +110,15 @@ class AbstractCollection(metaclass=abc.ABCMeta):
         raise NotImplementedError
 
     def __repr__(self):
-        return '<%s: %s>' % (self.__class__.__name__, self.model.__name__)
+        return '<{}: {!r}>' % (self.__class__.__name__, list(self))
 
 
 class Collection(AbstractCollection):
 
     def __init__(self, model, query=None, session=None):
         super().__init__(model=model)
+        if query is None:
+            query = {}
         self._query = query
         if session is None:
             session = current_session()
@@ -106,19 +147,13 @@ class Collection(AbstractCollection):
     def all(self):
         return self._replace()
 
-    def filter(self, *args, **kwargs):
-        query = dict(*args, **kwargs)
-        if not query:
-            query = self._query
-        elif self._query:
-            query = {'$and': [self._query, query]}
+    def filter(self, **kwargs):
+        query = combine_queries(self._query, kwargs)
         return self._replace(query=query)
 
-    def get(self, *args, **kwargs):
-        query = dict(*args, **kwargs)
-
-        if query:
-            it = iter(self.filter(query))
+    def get(self, **kwargs):
+        if kwargs:
+            it = iter(self.filter(kwargs))
         else:
             it = iter(self)
 
@@ -137,16 +172,13 @@ class Collection(AbstractCollection):
         return obj
 
     def __iter__(self):
-        self._retrieve()
-        return iter(self._elems)
+        return iter(self._retrieve())
 
     def __len__(self):
-        self._retrieve()
-        return len(self._elems)
+        return len(self._retrieve())
 
     def __getitem__(self, index):
-        self._retrieve()
-        return self._elems[index]
+        return self._retrieve()[index]
 
     def _retrieve(self):
         if self._elems is not None:
@@ -161,19 +193,16 @@ class Collection(AbstractCollection):
 
         return self._elems
 
-    def __repr__(self):
-        return '<%s: %s>' % (self.__class__.__name__, self.model.__name__)
-
 
 class EmptyCollection(AbstractCollection):
 
     def all(self):
         return self
 
-    def filter(self, *args, **kwargs):
+    def filter(self, **kwargs):
         return self
 
-    def get(self, *args, **kwargs):
+    def get(self, **kwargs):
         raise ObjectNotFound
 
     def __iter__(self):
@@ -210,15 +239,35 @@ class Manager:
     def all(self):
         return Collection(model=self.model, session=self._session)
 
-    def filter(self, *args, **kwargs):
-        query = dict(*args, **kwargs)
-        return Collection(model=self.model, query=query, session=self._session)
+    def filter(self, **kwargs):
+        return Collection(
+            model=self.model,
+            query=kwargs,
+            session=self._session)
 
     def get(self, *args, **kwargs):
-        if not kwargs and len(args) == 1 and isinstance(args[0], str):
-            identifier = args[0]
+        """
+        get(identifier)
+        Retrieve an object with the given identifier
+
+        get(key1='value', key2='value', ...)
+        Retrieve an object matching the given query
+        """
+        if args:
+            if len(args) > 1:
+                raise TypeError(
+                    'get() takes from 0 to 1 positional '
+                    'argument but {} were given'
+                    .format(len(args)))
+            if kwargs:
+                raise TypeError(
+                    'get() does not accept positional arguments '
+                    'together with keyword arguments')
+
+            identifier, = args
             obj = self.model(id=identifier)
             obj.reload()
+
             return obj
 
         return self.filter(*args, **kwargs).get()

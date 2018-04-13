@@ -145,9 +145,7 @@ class SwarmProcedureExecutor(DockerExecutorMixin, ProcedureExecutor):
 
     def get_pending_triggers(self):
         qs = super().get_pending_triggers()
-        return qs.filter({
-            'target': self.cluster_id,
-        })
+        return qs.filter(target=self.cluster_id)
 
     def get_procedure(self, trigger):
         procedure = super().get_procedure(trigger)

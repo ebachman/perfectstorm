@@ -286,6 +286,6 @@ class TestFiltering:
         ),
     ])
     def test_filters(self, random_resources, query, filterfunc):
-        matched_resources = Resource.objects.filter(query)
+        matched_resources = Resource.objects.filter(**query)
         expected_resources = list(filter(filterfunc, random_resources))
         assert_resources_equal(matched_resources, expected_resources)
