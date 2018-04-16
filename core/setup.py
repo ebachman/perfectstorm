@@ -35,12 +35,15 @@ setup(
     packages=find_packages(),
     scripts=['stormd'],
     install_requires=[
+        'blinker >= 1.4, < 1.5',
         'django >= 1.11, < 1.12',
         'django-rest-framework-mongoengine >= 3.3, < 3.4',
         'djangorestframework >= 3.7, < 3.8',
+        'gevent >= 1.2, < 1.3',
+        'greenlet >= 0.4, < 0.5',
+        'gunicorn >= 19, < 20',
         'mongoengine >= 0.15, < 0.16',
         'pymongo >= 3.6, < 3.7',
-        'tornado >= 4.5, < 4.6',
     ],
     zip_safe=False,
 )

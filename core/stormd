@@ -29,15 +29,10 @@
 # either expressed or implied, of the Perfect Storm Project.
 
 import argparse
-import logging
+import multiprocessing
 import os
-import socket
-import sys
 
-import tornado.httpserver
-import tornado.ioloop
-import tornado.log
-import tornado.wsgi
+from gunicorn.app.base import BaseApplication
 
 
 def address(addr):
@@ -106,61 +101,45 @@ def parse_args():
     return options
 
 
-def setup_logging():
-    formatter = tornado.log.LogFormatter(
-        fmt='[%(asctime)s] %(color)s%(message)s%(end_color)s',
-        datefmt='%Y-%m-%d %H:%M:%S')
+class StormdApplication(BaseApplication):
 
-    handler = logging.StreamHandler(stream=sys.stdout)
-    handler.setFormatter(formatter)
+    def __init__(self, options):
+        self.options = options
+        super().__init__()
 
-    logger = logging.getLogger('tornado')
-    logger.setLevel(logging.INFO)
-    logger.addHandler(handler)
+    def load_config(self):
+        bind = []
+
+        for host, port in self.options.bind:
+            if port is None:
+                port = self.options.default_port
+            bind.append('{}:{}'.format(host, port))
+
+        self.cfg.set('bind', bind)
+
+        if self.options.debug:
+            self.cfg.set('loglevel', 'DEBUG')
+
+        # Gunicorn recommends using (2 * cpu + 1) as the number of workers
+        self.cfg.set('workers', multiprocessing.cpu_count() * 2 + 1)
+        self.cfg.set('worker_class', 'gevent')
+
+        # Use os.environ to pass settings to teacup
+        os.environ.update({
+            'DJANGO_SETTINGS_MODULE': 'teacup.settings',
+            'STORM_DEBUG': '1' if self.options.debug else '',
+            'STORM_MONGODB': 'mongodb://{}:{}/perfectstorm'.format(
+                *self.options.mongo),
+        })
+
+    def load(self):
+        from teacup.wsgi import application
+        return application
 
 
 def run():
     options = parse_args()
-
-    os.environ['DJANGO_SETTINGS_MODULE'] = 'teacup.settings'
-    os.environ['STORM_DEBUG'] = '1' if options.debug else ''
-    os.environ['STORM_MONGODB'] = 'mongodb://{}:{}/perfectstorm'.format(*options.mongo)
-
-    setup_logging()
-
-    from teacup.wsgi import application
-
-    container = tornado.wsgi.WSGIContainer(application)
-    http_server = tornado.httpserver.HTTPServer(container)
-
-    for host, port in options.bind:
-        if port is None:
-            port = options.default_port
-        if host and host[0] == '[' and host[-1] == ']':
-            bind_host = host[1:-1]
-        else:
-            bind_host = host
-
-        try:
-            http_server.bind(port, bind_host)
-        except socket.error as exc:
-            print('Failed to bind {}:{}: {}'.format(host, port, exc.args[1]), file=sys.stderr)
-            sys.exit(1)
-
-        print('Listening on http://{}:{}/'.format(host, port), file=sys.stderr, flush=True)
-
-    try:
-        http_server.start(0)
-    except KeyboardInterrupt:
-        # This code is executed in the main process.
-        http_server.stop()
-    else:
-        # This code is executed in the forked sub-processes.
-        ioloop = tornado.ioloop.IOLoop.current()
-        try:
-            ioloop.start()
-        except KeyboardInterrupt:
-            ioloop.stop()
+    StormdApplication(options).run()
 
 
 if __name__ == '__main__':
