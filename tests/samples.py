@@ -58,6 +58,7 @@ RESOURCE_HEALTHS = [
     'unhealthy',
 ]
 
+
 def make_resource(**kwargs):
     resource = Resource(
         type=random.choice(RESOURCE_TYPES),

@@ -1,5 +1,4 @@
-from django.conf.urls import url, include
-from django.views.static import serve
+from django.conf.urls import url
 
 from teacup.ui import views
 

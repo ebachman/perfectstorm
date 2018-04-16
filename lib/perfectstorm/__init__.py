@@ -1,3 +1,5 @@
+import logging
+
 from .api import (
     Agent,
     Application,
@@ -25,6 +27,5 @@ version_info = (0, 1)
 __version__ = '0.1'
 
 
-import logging
 logging.getLogger(__name__).addHandler(logging.NullHandler())
 del logging

@@ -46,7 +46,7 @@ def collection_diff(past_set, present_set, idfunc=None):
         return Diff(set(), set(), set())
 
     if idfunc is None:
-        ifdunc = id
+        idfunc = id
 
     past_map = {idfunc(item): item for item in past_set}
     present_map = {idfunc(item): item for item in present_set}

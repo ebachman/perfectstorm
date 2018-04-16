@@ -84,10 +84,10 @@ class TestCreate(BaseTestCreateWithAgent):
             (
                 {'type': 'test', 'owner': PLACEHOLDER, 'names': [
                     random_name(1), random_name(2), random_name(3),
-                 ]},
+                ]},
                 {**self.default_resource, 'type': 'test', 'names': [
                     random_name.recall(1), random_name.recall(2), random_name.recall(3),
-                 ]},
+                ]},
             ),
             (
                 {**self.default_resource, 'id': None, 'type': 'test'},

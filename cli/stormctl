@@ -39,7 +39,7 @@ def yaml_dump(arg):
 
 def ellipsise(s, max_length):
     if len(s) > max_length:
-        s = s[:max_length-3] + '...'
+        s = s[:max_length - 3] + '...'
     return s
 
 

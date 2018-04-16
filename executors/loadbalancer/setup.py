@@ -1,4 +1,4 @@
-from setuptools import setup, find_packages
+from setuptools import setup
 
 setup(
     name='perfectstorm-executors-loadbalancer',
@@ -11,5 +11,3 @@ setup(
         '../../library',
     ],
 )
-
-
