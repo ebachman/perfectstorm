@@ -13,6 +13,9 @@ from .stubs import ANY
 
 
 def assert_event_in(expected_event, events_queue, wait=False):
+    if isinstance(events_queue, list):
+        events_queue = collections.deque(events_queue)
+
     if wait:
         # Wait for the event to appear for at least 5 seconds
         timeout = time.time() + 5
@@ -89,8 +92,8 @@ def test_latest_pagination(random_resources):
 
 
 @contextlib.contextmanager
-def collect_realtime_events():
-    events_iterator = events.stream()
+def collect_realtime_events(*args, **kwargs):
+    events_iterator = events.stream(*args, **kwargs)
     events_queue = collections.deque()
 
     def feed():
@@ -120,3 +123,18 @@ def test_stream(agent):
 
         res.delete()
         assert_event_in(Event(ANY, 'deleted', entity), events, wait=True)
+
+
+def test_stream_start(agent):
+    res = samples.make_resource(owner=agent.id)
+    entity = Entity('resource', res.id, res.names)
+    event = Event(ANY, 'created', entity)
+
+    latest_events = events.latest()
+    assert_event_in(event, latest_events)
+
+    event_index = latest_events.index(event)
+    start = latest_events[event_index].index
+
+    with collect_realtime_events(start=start) as realtime_events:
+        assert_event_in(event, realtime_events, wait=True)

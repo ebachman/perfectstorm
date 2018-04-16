@@ -336,10 +336,6 @@ class EventView(View):
 
     def get(self, request):
         streaming = self.request.GET.get('stream', False)
-
-        if streaming:
-            return self.streaming_response()
-
         from_id = count = None
 
         try:
@@ -352,7 +348,10 @@ class EventView(View):
         except (KeyError, TypeError, ValueError):
             pass
 
-        return self.static_response(from_id, count)
+        if streaming:
+            return self.streaming_response(from_id)
+        else:
+            return self.static_response(from_id, count)
 
     def static_response(self, from_id=None, count=None):
         if count is None:
@@ -372,13 +371,16 @@ class EventView(View):
 
         return response
 
-    def streaming_response(self):
+    def streaming_response(self, from_id=None):
         return StreamingHttpResponse(
-            self.iter_realtime_events(),
+            self.iter_realtime_events(from_id),
             content_type='application/json')
 
-    def iter_realtime_events(self):
-        last_event_id = self._last_event_id()
+    def iter_realtime_events(self, from_id=None):
+        if from_id is None:
+            last_event_id = self._last_event_id()
+        else:
+            last_event_id = from_id - 1
 
         last_line_timestamp = time.time()
 
