@@ -37,7 +37,7 @@ class RegexMatcher:
 
 ANY = AnyType()
 PLACEHOLDER = PlaceholderType()
-IDENTIFIER = RegexMatcher('^[a-z]+-[0-9A-Za-z]{22}$')
+IDENTIFIER = RegexMatcher('^[a-z]{3}-[0-9A-Za-z]{22}$')
 
 
 class RandomNameGenerator:

@@ -328,7 +328,7 @@ class Agent(TypeMixin, StormDocument):
     heartbeat = DateTimeField(default=datetime.now, required=True)
 
     meta = {
-        'id_prefix': 'agent-',
+        'id_prefix': 'agt-',
         'queryset_class': AgentQuerySet,
         'indexes': ['heartbeat'],
     }
@@ -412,7 +412,7 @@ class Group(NameMixin, StormDocument):
     exclude = ListField(StormReferenceField(Resource))
 
     meta = {
-        'id_prefix': 'group-',
+        'id_prefix': 'grp-',
     }
 
     def members(self, filter=None):
@@ -502,7 +502,7 @@ class Procedure(NameMixin, TypeMixin, ProcedureMixin, StormDocument):
     content = StringField(required=True)
 
     meta = {
-        'id_prefix': 'proc-',
+        'id_prefix': 'prc-',
     }
 
 
@@ -525,7 +525,7 @@ class Trigger(TypeMixin, ProcedureMixin, StormDocument):
     created = DateTimeField(default=datetime.now, required=True)
 
     meta = {
-        'id_prefix': 'trig-',
+        'id_prefix': 'trg-',
         'indexes': [
             'created',
             'owner',
