@@ -35,3 +35,7 @@ def test_resource_ls(random_resources):
         # they will be truncated.
         if res.names:
             assert any(name in res_line for name in res.names)
+
+
+def test_import(examples_path):
+    stormctl('import', '-f', examples_path / 'hello-world.yaml')

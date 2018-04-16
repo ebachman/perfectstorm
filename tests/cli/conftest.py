@@ -1,4 +1,5 @@
 import os
+import pathlib
 
 import pytest
 
@@ -11,3 +12,16 @@ def skip_without_stormctl(request, api_session):
         if os.access(name, os.X_OK):
             return
     pytest.skip('stormctl not found')
+
+
+@pytest.fixture(scope='session')
+def examples_path():
+    import tests
+
+    test_package_path = pathlib.Path(tests.__file__).parent
+    examples_path = test_package_path.parent / 'examples'
+
+    if examples_path.is_dir():
+        return examples_path
+
+    pytest.skip('examples directiory not found')
