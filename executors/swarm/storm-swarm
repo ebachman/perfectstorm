@@ -241,7 +241,9 @@ class SwarmDiscoveryExecutor(DockerExecutorMixin, DiscoveryExecutor):
 
         else:
             # Compare info
-            if prev.info != curr.info:
+            if prev.info is None:
+                created.append(('info', curr.info))
+            elif prev.info != curr.info:
                 updated.append(('info', curr.info))
 
             # Compare services
@@ -282,11 +284,12 @@ class SwarmDiscoveryExecutor(DockerExecutorMixin, DiscoveryExecutor):
             raise AssertionError(resource_type)
 
     def save_swarm_info(self, data):
-        names = [self._get_cluster_id(data)]
+        cluster_id = self._get_cluster_id(data)
 
         resource = Resource(
+            id=cluster_id,
             type='swarm-cluster',
-            names=names,
+            names=[cluster_id],
             owner=self.agent.id,
             status='running',
             health='healthy',
@@ -296,18 +299,20 @@ class SwarmDiscoveryExecutor(DockerExecutorMixin, DiscoveryExecutor):
         resource.save()
 
     def _get_service_names(self, data):
-        return [data['ID'], data['Spec']['Name']]
+        return [data['Spec']['Name'], data['ID']]
 
     def save_service(self, data):
         resource = Resource(
+            id=data['ID'],
             type='swarm-service',
             owner=self.agent.id,
-            parent=self.snapshot.info['ID'],
+            parent=self._get_cluster_id(self.snapshot.info),
             names=self._get_service_names(data),
             status='running',
             health='healthy',
             snapshot=data,
         )
+
         resource.save()
 
     def _get_task_names(self, data):
@@ -373,6 +378,7 @@ class SwarmDiscoveryExecutor(DockerExecutorMixin, DiscoveryExecutor):
 
     def save_task(self, data):
         resource = Resource(
+            id=data['ID'],
             type='swarm-task',
             owner=self.agent.id,
             parent=data['ServiceID'],
@@ -382,11 +388,12 @@ class SwarmDiscoveryExecutor(DockerExecutorMixin, DiscoveryExecutor):
             health='healthy',
             snapshot=data,
         )
+
         resource.save()
 
     def delete_resource(self, resource_data):
         resource_type, resource_data = resource_data
-        Resource(names=resource_data['ID']).delete()
+        Resource.objects.get(resource_data['ID']).delete()
 
 
 class SwarmDeployerClient(ExecutorClient):
