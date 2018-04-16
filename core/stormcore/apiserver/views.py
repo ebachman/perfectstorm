@@ -16,7 +16,7 @@ from mongoengine import DoesNotExist, MultipleObjectsReturned
 
 from rest_framework_mongoengine.viewsets import ModelViewSet
 
-from teacup.apiserver.models import (
+from stormcore.apiserver.models import (
     Agent,
     Application,
     Event,
@@ -28,7 +28,7 @@ from teacup.apiserver.models import (
     cleanup_expired_agents,
 )
 
-from teacup.apiserver.serializers import (
+from stormcore.apiserver.serializers import (
     AgentSerializer,
     ApplicationSerializer,
     CreateTriggerSerializer,

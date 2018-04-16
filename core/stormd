@@ -96,16 +96,16 @@ class StormdApplication(BaseApplication):
         self.cfg.set('workers', multiprocessing.cpu_count() * 2 + 1)
         self.cfg.set('worker_class', 'gevent')
 
-        # Use os.environ to pass settings to teacup
+        # Use os.environ to pass settings to stormcore
         os.environ.update({
-            'DJANGO_SETTINGS_MODULE': 'teacup.settings',
+            'DJANGO_SETTINGS_MODULE': 'stormcore.settings',
             'STORM_DEBUG': '1' if self.options.debug else '',
             'STORM_MONGO': 'mongodb://{}:{}/perfectstorm'.format(
                 *self.options.mongo),
         })
 
     def load(self):
-        from teacup.wsgi import application
+        from stormcore.wsgi import application
         return application
 
 

@@ -3,7 +3,7 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from teacup.apiserver import models
+from stormcore.apiserver import models
 
 
 def base62_to_int(s):

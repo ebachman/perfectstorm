@@ -1,6 +1,6 @@
 from django.conf.urls import url
 
-from teacup.ui import views
+from stormcore.ui import views
 
 urlpatterns = [
     url(r'^$', views.index),

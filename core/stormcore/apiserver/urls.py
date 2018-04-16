@@ -2,7 +2,7 @@ from django.conf.urls import url, include
 
 from rest_framework_mongoengine.routers import DefaultRouter
 
-from teacup.apiserver import views
+from stormcore.apiserver import views
 
 
 router = DefaultRouter(trailing_slash=False)

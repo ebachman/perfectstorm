@@ -10,7 +10,7 @@ from rest_framework_mongoengine.fields import ReferenceField
 from rest_framework_mongoengine.serializers import DocumentSerializer, EmbeddedDocumentSerializer
 from rest_framework_mongoengine.validators import UniqueValidator
 
-from teacup.apiserver.models import (
+from stormcore.apiserver.models import (
     Agent,
     Application,
     ComponentLink,
