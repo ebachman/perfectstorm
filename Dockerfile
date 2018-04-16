@@ -5,7 +5,7 @@ ENV STORM_BIND 0.0.0.0
 
 ENTRYPOINT ["/docker-entrypoint.sh"]
 
-EXPOSE 8000
+EXPOSE 28482
 
 COPY docker-entrypoint.sh /
 

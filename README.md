@@ -120,7 +120,7 @@ Now you're ready to start the API Server!
 
     stormd
 
-You can now interact with the API at http://127.0.0.1:8000/v1/, either
+You can now interact with the API at http://127.0.0.1:28482/v1/, either
 using your browser or from the command line.
 
 Whenever you close the terminal and come back in, remember to re-activate

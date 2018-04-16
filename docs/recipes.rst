@@ -95,7 +95,7 @@ Submitting a recipe can be done via ``stormctl``::
 
 Or via the API::
 
-    curl -X PUT -d '<recipe>' http://127.0.0.1:8000/v1/recipes/
+    curl -X PUT -d '<recipe>' http://127.0.0.1:28482/v1/recipes/
 
 
 Running a recipe
@@ -107,7 +107,7 @@ A recipe can be run by issuing a :doc:`trigger <triggers>` of type `recipe`. Via
 
 Via the API::
 
-    $ curl -X PUT -d '{"recipeName":"<recipe name>"}' http://127.0.0.1:8000/v1/triggers/
+    $ curl -X PUT -d '{"recipeName":"<recipe name>"}' http://127.0.0.1:28482/v1/triggers/
 
 When running a recipe you can override any of these fields:
 

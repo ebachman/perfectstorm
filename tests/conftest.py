@@ -6,7 +6,7 @@ def pytest_addoption(parser):
         '--api-server-host', action='store', default='127.0.0.1',
         help='Host for the Perfect Storm API server')
     parser.addoption(
-        '--api-server-port', action='store', type=int, default=8000,
+        '--api-server-port', action='store', type=int, default=28482,
         help='Host for the Perfect Storm API server')
     parser.addoption(
         '--no-cleanup', action='store_true',

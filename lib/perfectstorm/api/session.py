@@ -15,7 +15,7 @@ _global_session = None
 _local_sessions = threading.local()
 
 DEFAULT_HOST = '127.0.0.1'
-DEFAULT_PORT = 8000
+DEFAULT_PORT = 28482
 
 
 def _get_current_session():
