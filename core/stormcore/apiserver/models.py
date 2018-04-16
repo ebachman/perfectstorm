@@ -554,6 +554,8 @@ class Trigger(TypeMixin, ProcedureMixin, StormDocument):
 
 class Event(Document):
 
+    MAX_EVENTS = 10000
+
     EVENT_TYPE_CHOICES = [
         'created',
         'updated',
@@ -570,6 +572,8 @@ class Event(Document):
 
     meta = {
         'ordering': ['id'],
+        'max_documents': MAX_EVENTS,
+        'max_size': 8 * 1024 * MAX_EVENTS,
     }
 
     @staticmethod

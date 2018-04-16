@@ -2,6 +2,7 @@ import json
 import time
 from datetime import datetime
 
+import pymongo.cursor
 from pymongo.errors import OperationFailure
 
 from django.http import Http404, HttpResponse, StreamingHttpResponse
@@ -332,7 +333,8 @@ class EventView(View):
     KEEP_ALIVE_TIME = 10
 
     def _last_event_id(self):
-        return self.queryset.only('id').order_by('-id').first().id
+        last_event = self.queryset.only('id').order_by('-id').first()
+        return last_event.id if last_event is not None else -1
 
     def get(self, request):
         streaming = self.request.GET.get('stream', False)
@@ -384,26 +386,26 @@ class EventView(View):
 
         last_line_timestamp = time.time()
 
-        # XXX Consider using a capped collection and a tailable
-        # XXX cursor with the awaitData option.
+        new_events_qs = self.queryset.filter(id__gt=last_event_id)
 
         while True:
-            new_events = self.queryset.filter(id__gt=last_event_id)
+            cursor = new_events_qs._collection.find(
+                new_events_qs._query,
+                cursor_type=pymongo.cursor.CursorType.TAILABLE_AWAIT)
 
-            if not new_events:
+            while cursor.alive:
+                for doc in cursor:
+                    ev = Event._from_son(doc)
+                    serializer = EventSerializer(ev)
+                    yield json.dumps(serializer.data) + '\n'
+                    last_event_id = ev.id
+
                 if time.time() - last_line_timestamp >= self.KEEP_ALIVE_TIME:
                     # If no events are to be sent, send a blank line every
                     # KEEP_ALIVE_TIME seconds to ensure that the connection
                     # is kept alive and does not time out.
                     yield '\n'
-                    last_line_timestamp = time.time()
+
+                last_line_timestamp = time.time()
 
                 time.sleep(1)
-                continue
-
-            for ev in new_events:
-                serializer = EventSerializer(ev)
-                yield json.dumps(serializer.data) + '\n'
-                last_event_id = ev.id
-
-            last_line_timestamp = time.time()
