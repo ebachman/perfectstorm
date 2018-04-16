@@ -1,3 +1,5 @@
+from mongoengine import Document
+
 from rest_framework.serializers import (
     CharField,
     Field,
@@ -37,10 +39,12 @@ class StormReferenceField(ReferenceField):
         except Exception:
             self.fail('not_found', pk_value=value)
 
-        return document.id
+        return document
 
     def to_representation(self, value):
-        return value.id
+        if isinstance(value, Document):
+            return value.id
+        return value
 
 
 class EscapedDictField(Field):
