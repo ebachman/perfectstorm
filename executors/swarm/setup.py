@@ -6,6 +6,5 @@ setup(
     scripts=['storm-swarm'],
     install_requires=[
         'perfectstorm-lib',
-        'requests-unixsocket >= 0.1, < 0.2',
     ],
 )
