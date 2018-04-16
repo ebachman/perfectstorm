@@ -125,7 +125,7 @@ class TestCreate(BaseTestCreateWithAgent):
         (
             {'type': 'typez', 'names': [None], 'owner': PLACEHOLDER},
             'names.[]: field cannot be None',
-            {'names': ['This field may not be null.']},
+            {'names': {'0': ['This field may not be null.']}},
         ),
 
         # Empty fields
@@ -138,7 +138,7 @@ class TestCreate(BaseTestCreateWithAgent):
         (
             {'type': 'typez', 'names': [''], 'owner': PLACEHOLDER},
             'names.[]: field cannot be blank',
-            {'names': ['This field may not be blank.']},
+            {'names': {'0': ['This field may not be blank.']}},
         ),
     ]
 

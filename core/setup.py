@@ -9,7 +9,7 @@ setup(
         'blinker >= 1.4, < 1.5',
         'django >= 1.11, < 1.12',
         'django-rest-framework-mongoengine >= 3.3, < 3.4',
-        'djangorestframework >= 3.7, < 3.8',
+        'djangorestframework >= 3.8, < 3.9',
         'gevent >= 1.2, < 1.3',
         'greenlet >= 0.4, < 0.5',
         'gunicorn >= 19, < 20',
