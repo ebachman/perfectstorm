@@ -1,4 +1,4 @@
-from django.conf.urls import url, include
+from django.urls import path, include
 
 from rest_framework_mongoengine.routers import DefaultRouter
 
@@ -15,6 +15,6 @@ router.register(r'procedures', views.ProcedureViewSet)
 router.register(r'triggers', views.TriggerViewSet)
 
 urlpatterns = [
-    url(r'^', include(router.urls)),
-    url(r'^events$', views.EventView.as_view()),
+    path('', include(router.urls)),
+    path('events', views.EventView.as_view()),
 ]

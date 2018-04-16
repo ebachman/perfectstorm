@@ -1,8 +1,8 @@
-from django.conf.urls import include, url
 from django.contrib.staticfiles.views import serve
+from django.urls import path, include
 
 urlpatterns = [
-    url(r'^v1/', include('stormcore.apiserver.urls')),
-    url(r'^ui/', include('stormcore.ui.urls')),
-    url(r'^static/(?P<path>.*)$', serve, kwargs={'insecure': True}),
+    path('v1/', include('stormcore.apiserver.urls')),
+    path('ui/', include('stormcore.ui.urls')),
+    path('static/<path>', serve, kwargs={'insecure': True}),
 ]

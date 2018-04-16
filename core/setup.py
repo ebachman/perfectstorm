@@ -7,7 +7,7 @@ setup(
     scripts=['stormd'],
     install_requires=[
         'blinker >= 1.4, < 1.5',
-        'django >= 1.11, < 1.12',
+        'django >= 2.0, < 2.1',
         'django-rest-framework-mongoengine >= 3.3, < 3.4',
         'djangorestframework >= 3.8, < 3.9',
         'gevent >= 1.2, < 1.3',
