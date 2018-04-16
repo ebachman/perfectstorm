@@ -361,9 +361,6 @@ class EventView(View):
             last_event_id = self._last_event_id()
             from_id = last_event_id - count + 1
 
-        print(dict(
-            id__gte=from_id,
-            id__lt=from_id + count))
         qs = self.queryset.filter(
             id__gte=from_id,
             id__lt=from_id + count)
