@@ -43,6 +43,7 @@ from teacup.apiserver.models import (
     Agent,
     Application,
     ComponentLink,
+    Event,
     Group,
     Procedure,
     Resource,
@@ -276,3 +277,12 @@ class TriggerHandleSerializer(Serializer):
 class TriggerCompleteSerializer(Serializer):
 
     result = EscapedDictField()
+
+
+class EventSerializer(DocumentSerializer):
+
+    class Meta:
+        model = Event
+        fields = (
+            'id', 'event_type', 'entity_type', 'entity_id', 'entity_names',
+        )

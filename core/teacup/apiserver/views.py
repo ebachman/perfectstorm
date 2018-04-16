@@ -28,11 +28,13 @@
 # either expressed or implied, of the Perfect Storm Project.
 
 import json
+import time
 from datetime import datetime
 
 from pymongo.errors import OperationFailure
 
-from django.http import Http404
+from django.http import Http404, HttpResponse, StreamingHttpResponse
+from django.views.generic import View
 
 from rest_framework import status
 from rest_framework.decorators import detail_route
@@ -46,6 +48,7 @@ from rest_framework_mongoengine.viewsets import ModelViewSet
 from teacup.apiserver.models import (
     Agent,
     Application,
+    Event,
     Group,
     Procedure,
     Resource,
@@ -58,6 +61,7 @@ from teacup.apiserver.serializers import (
     AgentSerializer,
     ApplicationSerializer,
     CreateTriggerSerializer,
+    EventSerializer,
     GroupAddRemoveMembersSerializer,
     GroupSerializer,
     ProcedureSerializer,
@@ -341,3 +345,95 @@ class TriggerViewSet(CleanupAgentsMixin, QueryFilterMixin, ModelViewSet):
         trigger.save()
 
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class EventView(View):
+
+    queryset = Event.objects.all()
+
+    # For static responses: default number of events to return if 'count'
+    # is not specified
+    DEFAULT_COUNT = 128
+
+    # For streaming responses: if no event is transmitted after
+    # KEEP_ALIVE_TIME seconds, then an empty blank line is sent
+    # to avoid client timeout.
+    KEEP_ALIVE_TIME = 10
+
+    def _last_event_id(self):
+        return self.queryset.only('id').order_by('-id').first().id
+
+    def get(self, request):
+        streaming = self.request.GET.get('stream', False)
+
+        if streaming:
+            return self.streaming_response()
+
+        from_id = count = None
+
+        try:
+            from_id = int(self.request.GET['start'])
+        except (KeyError, TypeError, ValueError):
+            pass
+
+        try:
+            count = int(self.request.GET['count'])
+        except (KeyError, TypeError, ValueError):
+            pass
+
+        return self.static_response(from_id, count)
+
+    def static_response(self, from_id=None, count=None):
+        if count is None:
+            count = self.DEFAULT_COUNT
+        if from_id is None:
+            last_event_id = self._last_event_id()
+            from_id = last_event_id - count + 1
+
+        print(dict(
+            id__gte=from_id,
+            id__lt=from_id + count))
+        qs = self.queryset.filter(
+            id__gte=from_id,
+            id__lt=from_id + count)
+
+        serializer = EventSerializer(qs, many=True)
+
+        response = HttpResponse(content_type='application/json')
+        json.dump(serializer.data, response)
+
+        return response
+
+    def streaming_response(self):
+        return StreamingHttpResponse(
+            self.iter_realtime_events(),
+            content_type='application/json')
+
+    def iter_realtime_events(self):
+        last_event_id = self._last_event_id()
+
+        last_line_timestamp = time.time()
+
+        # XXX Consider using a capped collection and a tailable
+        # XXX cursor with the awaitData option.
+
+        while True:
+            new_events = self.queryset.filter(id__gt=last_event_id)
+
+            if not new_events:
+                if time.time() - last_line_timestamp >= self.KEEP_ALIVE_TIME:
+                    # If no events are to be sent, send a blank line every
+                    # KEEP_ALIVE_TIME seconds to ensure that the connection
+                    # is kept alive and does not time out.
+                    yield '\n'
+                    last_line_timestamp = time.time()
+
+                time.sleep(1)
+                continue
+
+            for ev in new_events:
+                serializer = EventSerializer(ev)
+                yield json.dumps(serializer.data) + '\n'
+                last_event_id = ev.id
+
+            last_line_timestamp = time.time()

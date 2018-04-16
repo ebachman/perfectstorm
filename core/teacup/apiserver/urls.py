@@ -45,4 +45,5 @@ router.register(r'triggers', views.TriggerViewSet)
 
 urlpatterns = [
     url(r'^', include(router.urls)),
+    url(r'^events$', views.EventView.as_view()),
 ]

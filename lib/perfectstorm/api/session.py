@@ -129,7 +129,7 @@ class Session:
         if not str(url).startswith(root):
             raise RuntimeError('URL has been mangled: %r' % url)
 
-    def request(self, method, path, **kwargs):
+    def request(self, method, path, decode_json=True, **kwargs):
         url = self.api_root / path
         self._check_url(url)
 
@@ -148,8 +148,10 @@ class Session:
         request = response.request
         log.info('%s %s -> %s %s', request.method, request.url, response.status_code, response.reason)
 
-        if response.status_code != 204:
-            return response.json()
+        if decode_json:
+            return response.json() if response.status_code != 204 else None
+        else:
+            return response
 
     def wrap_exception(self, exc):
         root_cause = exc

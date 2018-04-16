@@ -44,6 +44,7 @@ from mongoengine import (
     QuerySet,
     StringField,
     ValidationError,
+    signals,
 )
 
 from mongoengine.base.metaclasses import MetaDict
@@ -251,6 +252,37 @@ class StormReferenceField(BaseField):
         if isinstance(value, Document):
             value = value.id
         return value
+
+
+class AutoIncrementField(IntField):
+
+    _auto_gen = True
+
+    COUNTER_INCREMENT = """\
+        function() {
+            db.counters.findAndModify({
+                query: { _id: options.counter_name },
+                update: {
+                    $setOnInsert: { count: 1 }
+                },
+                upsert: true
+            });
+
+            return db.counters.findAndModify({
+                query: { _id: options.counter_name },
+                update: {
+                    $inc: { count: 1 },
+                },
+                new: true
+            });
+        }
+    """
+
+    def generate(self):
+        counter_name = self.owner_document.__name__.lower()
+        result = self.owner_document.objects.exec_js(
+            self.COUNTER_INCREMENT, counter_name=counter_name)
+        return int(result['count'])
 
 
 class StormQuerySet(QuerySet):
@@ -555,3 +587,59 @@ class Trigger(TypeMixin, ProcedureMixin, StormDocument):
 
     def __str__(self):
         return str(self.pk)
+
+
+class Event(Document):
+
+    EVENT_TYPE_CHOICES = [
+        'created',
+        'updated',
+        'deleted',
+    ]
+
+    id = AutoIncrementField(primary_key=True)
+    date = DateTimeField(default=datetime.now)
+
+    event_type = StringField(choices=EVENT_TYPE_CHOICES, required=True)
+    entity_type = StringField(required=True)
+    entity_id = StringField(required=True)
+    entity_names = ListField(StringField())
+
+    meta = {
+        'ordering': ['id'],
+    }
+
+    @staticmethod
+    def record_event(event_type, obj):
+        if not isinstance(obj, StormDocument):
+            return
+
+        names = []
+        if isinstance(obj, NameMixin):
+            if obj.name is not None:
+                names.append(obj.name)
+        elif isinstance(obj, Resource):
+            names.extend(obj.names)
+
+        ev = Event(
+            event_type=event_type,
+            entity_type=type(obj).__name__.lower(),
+            entity_id=obj.id,
+            entity_names=names,
+        )
+
+        ev.save()
+        return ev
+
+
+def on_save(sender, document, created=False, **kwargs):
+    event_type = 'created' if created else 'updated'
+    Event.record_event(event_type, document)
+
+
+def on_delete(sender, document, **kwargs):
+    Event.record_event('deleted', document)
+
+
+signals.post_save.connect(on_save)
+signals.post_delete.connect(on_delete)
