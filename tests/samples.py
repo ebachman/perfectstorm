@@ -82,13 +82,13 @@ def create_random_resources(
     healthy_count = count * min_healthy_percent
 
     for i in range(count):
-        if running_count:
+        if running_count > 0:
             status = 'running'
             running_count -= 1
         else:
             status = random.choice(RESOURCE_STATUSES)
 
-        if healthy_count:
+        if healthy_count > 0:
             health = 'healthy'
             healthy_count -= 1
         else:
