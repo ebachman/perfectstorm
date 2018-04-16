@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 
 import argparse
+import curses
+import logging
 import multiprocessing
 import os
+import sys
 
+from gunicorn import glogging
 from gunicorn.app.base import BaseApplication
 
 
@@ -73,6 +77,77 @@ def parse_args():
     return options
 
 
+def supports_colors(fp):
+    try:
+        if hasattr(fp, 'isatty') and hasattr(fp, 'fileno') and fp.isatty():
+            curses.setupterm(fd=fp.fileno())
+            if curses.tigetnum('colors') > 0:
+                return True
+    except Exception:
+        pass
+    return False
+
+
+class StormdLogger(glogging.Logger):
+
+    LOG_FORMAT = '[%(levelname)1.1s %(asctime)s] %(color)s%(message)s%(no_color)s'
+    DATE_FORMAT = '%Y-%m-%d %H:%M:%S %z'
+
+    def setup(self, cfg):
+        self.loglevel = self.LOG_LEVELS.get(cfg.loglevel.lower(), logging.INFO)
+        self.error_log.setLevel(self.loglevel)
+        self.access_log.setLevel(logging.INFO)
+
+        formatter = StormdLogFormatter(
+            fmt=self.LOG_FORMAT,
+            datefmt=self.DATE_FORMAT,
+            colors=supports_colors(sys.stdout),
+        )
+
+        handler = logging.StreamHandler(stream=sys.stdout)
+        handler.setFormatter(formatter)
+
+        for logger in (self.error_log, self.access_log):
+            logger.addHandler(handler)
+
+
+class StormdLogFormatter(logging.Formatter):
+
+    COLOR_CODES = {
+        logging.DEBUG: 4,
+        logging.INFO: 2,
+        logging.WARNING: 3,
+        logging.ERROR: 1,
+        logging.CRITICAL: 1,
+    }
+
+    def __init__(self, colors=False, **kwargs):
+        super().__init__(**kwargs)
+
+        if colors:
+            color_cap = (
+                curses.tigetstr('setaf') or
+                curses.tigetstr('setf') or
+                b'')
+
+            self._colors = {
+                levelno: curses.tparm(color_cap, color_code).decode('ascii')
+                for levelno, color_code in self.COLOR_CODES.items()
+            }
+
+            self._no_color = curses.tigetstr('sgr0').decode('ascii')
+        else:
+            self._colors = {
+                levelno: '' for levelno in self.COLOR_CODES
+            }
+            self._no_color = ''
+
+    def format(self, record):
+        record.color = self._colors[record.levelno]
+        record.no_color = self._no_color
+        return super().format(record)
+
+
 class StormdApplication(BaseApplication):
 
     def __init__(self, options):
@@ -91,6 +166,7 @@ class StormdApplication(BaseApplication):
 
         if self.options.debug:
             self.cfg.set('loglevel', 'DEBUG')
+        self.cfg.set('logger_class', StormdLogger)
 
         # Gunicorn recommends using (2 * cpu + 1) as the number of workers
         self.cfg.set('workers', multiprocessing.cpu_count() * 2 + 1)
