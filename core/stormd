@@ -100,7 +100,7 @@ class StormdApplication(BaseApplication):
         os.environ.update({
             'DJANGO_SETTINGS_MODULE': 'teacup.settings',
             'STORM_DEBUG': '1' if self.options.debug else '',
-            'STORM_MONGODB': 'mongodb://{}:{}/perfectstorm'.format(
+            'STORM_MONGO': 'mongodb://{}:{}/perfectstorm'.format(
                 *self.options.mongo),
         })
 

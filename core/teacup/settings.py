@@ -12,6 +12,8 @@ https://docs.djangoproject.com/en/1.11/ref/settings/
 
 import os
 
+import mongoengine
+
 # Build paths inside the project like this: os.path.join(BASE_DIR, ...)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -105,8 +107,6 @@ REST_FRAMEWORK = {
 # http://docs.mongoengine.org/guide/connecting.html
 
 DEFAULT_MONGODB_URI = 'mongodb://127.0.0.1/perfectstorm'
-MONGODB_URI = os.environ.get('STORM_MONGODB') or DEFAULT_MONGODB_URI
+MONGODB_URI = os.environ.get('STORM_MONGO') or DEFAULT_MONGODB_URI
 
-import mongoengine
 mongoengine.connect(host=MONGODB_URI, connect=False)
-del mongoengine
