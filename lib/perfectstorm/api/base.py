@@ -194,11 +194,6 @@ class Manager:
         self.model = model
         self._session = session
 
-    def _replace(self, **kwargs):
-        kwargs.setdefault('model', self.model)
-        kwargs.setdefault('session', self._session)
-        return self.__class__(**kwargs)
-
     @property
     def url(self):
         session = self._session if self._session is not None else current_session()

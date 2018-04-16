@@ -98,7 +98,6 @@ class StormdApplication(BaseApplication):
 
         # Use os.environ to pass settings to stormcore
         os.environ.update({
-            'DJANGO_SETTINGS_MODULE': 'stormcore.settings',
             'STORM_DEBUG': '1' if self.options.debug else '',
             'STORM_MONGO': 'mongodb://{}:{}/perfectstorm'.format(
                 *self.options.mongo),

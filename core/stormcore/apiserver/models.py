@@ -133,14 +133,6 @@ class EscapedDictField(BaseField):
     def to_python(self, value):
         return unescape_keys(value)
 
-    def lookup_member(self, member_name):
-        return member_name
-
-    def prepare_query_value(self, op, value):
-        if isinstance(value, str):
-            return StringField().prepare_query_value(op, value)
-        return super().prepare_query_value(op, self.to_mongo(value))
-
 
 _cleanup_interval = 1
 _cleanup_timestamp = 0
