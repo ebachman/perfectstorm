@@ -4,10 +4,13 @@ set -e
 
 cd "$(dirname "$(readlink -f "$0")")"/..
 
-pyflakes \
+flake8 \
     cli \
+    cli/stormctl \
     core \
+    core/stormd \
     docs \
     executors \
     lib \
-    tests
+    tests \
+    "$@"
