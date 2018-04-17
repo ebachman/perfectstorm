@@ -2,7 +2,7 @@ import time
 import traceback
 
 from .base import Model, Collection
-from .exceptions import TriggerError
+from .exceptions import StormTriggerError
 from .fields import StringField, ListField, DictField
 from .heartbeat import Heartbeat
 
@@ -214,4 +214,4 @@ class Trigger(ProcedureMixin, Model):
                 exc_info.get('traceback'),
             )
 
-        raise TriggerError(self.id, trigger=self) from parent_exception
+        raise StormTriggerError(self.id, trigger=self) from parent_exception

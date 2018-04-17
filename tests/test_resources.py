@@ -1,7 +1,7 @@
 import pytest
 
 from stormlib import Resource
-from stormlib.exceptions import ObjectNotFound
+from stormlib.exceptions import StormObjectNotFound
 
 from .create import BaseTestCreateWithAgent
 from .stubs import IDENTIFIER, PLACEHOLDER, random_name
@@ -100,18 +100,18 @@ class TestCreate(BaseTestCreateWithAgent):
 
         (
             {},
-            'type: field cannot be None',
+            'type: Field cannot be None',
             {'owner': ['This field is required.'],
              'type': ['This field is required.']},
         ),
         (
             {'type': 'test'},
-            'owner: field cannot be None',
+            'owner: Field cannot be None',
             {'owner': ['This field is required.']},
         ),
         (
             {'owner': PLACEHOLDER},
-            'type: field cannot be None',
+            'type: Field cannot be None',
             {'type': ['This field is required.']},
         ),
 
@@ -119,12 +119,12 @@ class TestCreate(BaseTestCreateWithAgent):
 
         (
             {'type': None, 'names': ['namez'], 'owner': PLACEHOLDER},
-            'type: field cannot be None',
+            'type: Field cannot be None',
             {'type': ['This field may not be null.']},
         ),
         (
             {'type': 'typez', 'names': [None], 'owner': PLACEHOLDER},
-            'names.[]: field cannot be None',
+            'names.[]: Field cannot be None',
             {'names': {'0': ['This field may not be null.']}},
         ),
 
@@ -132,12 +132,12 @@ class TestCreate(BaseTestCreateWithAgent):
 
         (
             {'type': '', 'names': ['namez'], 'owner': PLACEHOLDER},
-            'type: field cannot be blank',
+            'type: Field cannot be blank',
             {'type': ['This field may not be blank.']},
         ),
         (
             {'type': 'typez', 'names': [''], 'owner': PLACEHOLDER},
-            'names.[]: field cannot be blank',
+            'names.[]: Field cannot be blank',
             {'names': {'0': ['This field may not be blank.']}},
         ),
     ]
@@ -230,7 +230,7 @@ class TestRetrieval:
             Resource.objects.get(res.id)
 
     def test_retrieve_by_invalid_id(self, resources):
-        with pytest.raises(ObjectNotFound):
+        with pytest.raises(StormObjectNotFound):
             Resource.objects.get('uneistent')
 
     def test_retrieve_by_name(self, resources):
@@ -241,11 +241,11 @@ class TestRetrieval:
                 Resource.objects.get(name)
 
     def test_retrieve_by_invalid_name(self, resources):
-        with pytest.raises(ObjectNotFound):
+        with pytest.raises(StormObjectNotFound):
             Resource.objects.get('unexistent')
 
     def test_retrieve_by_common_name(self, resources):
-        with pytest.raises(ObjectNotFound):
+        with pytest.raises(StormObjectNotFound):
             Resource.objects.get('common-name')
 
 

@@ -1,7 +1,7 @@
 import pytest
 
 from stormlib import Group
-from stormlib.exceptions import APIRequestError
+from stormlib.exceptions import StormAPIError
 
 from .create import BaseTestCreate
 from .stubs import IDENTIFIER, random_name
@@ -70,13 +70,13 @@ class TestCreate(BaseTestCreate):
 
         (
             {'query': 'hello'},
-            "query: expected a dict, got 'hello'",
+            "query: Expected a dict, got 'hello'",
             {'query': ['Expected a JSON object.']},
         ),
 
         (
             {'include': {'x': 'y'}},
-            "include: expected a list or tuple, got {'x': 'y'}",
+            "include: Expected a list or tuple, got {'x': 'y'}",
             {'include': ['Expected a list of items but got type "dict".']},
         ),
     ]
@@ -89,7 +89,7 @@ class TestCreate(BaseTestCreate):
 
         group1.save()
 
-        with pytest.raises(APIRequestError) as excinfo:
+        with pytest.raises(StormAPIError) as excinfo:
             group2.save()
 
         assert excinfo.value.response.json() == {

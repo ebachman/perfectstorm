@@ -3,7 +3,7 @@ import json
 import threading
 
 from .exceptions import (
-    APINotFoundError, ObjectNotFound, MultipleObjectsReturned)
+    StormNotFoundError, StormObjectNotFound, StormMultipleObjectsReturned)
 from .fields import StringField
 from .session import current_session
 
@@ -132,14 +132,17 @@ class Collection(AbstractCollection):
         try:
             obj = next(it)
         except StopIteration:
-            raise ObjectNotFound('%s matching query does not exist' % self.model.__name__)
+            raise StormObjectNotFound(
+                '{} matching query does not exist'.format(self.model.__name__))
 
         try:
             next(it)
         except StopIteration:
             pass
         else:
-            raise MultipleObjectsReturned('Multiple objects returned instead of 1')
+            raise StormMultipleObjectsReturned(
+                'Multiple {} objects returned instead of 1'.format(
+                    self.model.__name__))
 
         return obj
 
@@ -175,7 +178,7 @@ class EmptyCollection(AbstractCollection):
         return self
 
     def get(self, **kwargs):
-        raise ObjectNotFound
+        raise StormObjectNotFound
 
     def __iter__(self):
         return iter([])
@@ -295,8 +298,8 @@ class Model(metaclass=ModelMeta):
             session = self._session
         try:
             response_data = session.get(self.url)
-        except APINotFoundError as exc:
-            raise ObjectNotFound(self.id)
+        except StormNotFoundError as exc:
+            raise StormObjectNotFound(self.id)
         self._data = response_data
 
     def save(self, validate=True, session=None):
@@ -315,7 +318,7 @@ class Model(metaclass=ModelMeta):
             # If an ID is defined, try to update
             try:
                 self._update(session)
-            except ObjectNotFound:
+            except StormObjectNotFound:
                 pass
             else:
                 return
@@ -330,8 +333,8 @@ class Model(metaclass=ModelMeta):
     def _update(self, session):
         try:
             response_data = session.put(self.url, json=self._data)
-        except APINotFoundError as exc:
-            raise ObjectNotFound(self.id)
+        except StormNotFoundError as exc:
+            raise StormObjectNotFound(self.id)
         self._data = response_data
 
     def delete(self, session=None):
@@ -341,8 +344,8 @@ class Model(metaclass=ModelMeta):
 
         try:
             session.delete(self.url)
-        except APINotFoundError as exc:
-            raise ObjectNotFound(self.id)
+        except StormNotFoundError as exc:
+            raise StormObjectNotFound(self.id)
 
     def validate(self, skip_fields=None):
         cls = self.__class__

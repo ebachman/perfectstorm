@@ -1,9 +1,9 @@
-class PerfectStormException(Exception):
+class StormException(Exception):
+    """Base class for all exceptions raised by stormlib."""
 
-    pass
 
-
-class ValidationError(PerfectStormException):
+class StormValidationError(StormException):
+    """Exception raised when validating a model fails."""
 
     def __init__(self, *args, field=None, **kwargs):
         super().__init__(*args, **kwargs)
@@ -17,67 +17,110 @@ class ValidationError(PerfectStormException):
             return '{}: {}'.format(self.field, s)
 
 
-class APIException(PerfectStormException):
+class StormAPIError(StormException):
+    """
+    Base class for exceptions raised when an error occurs while communicating
+    to the Storm API Server.
+    """
 
-    pass
-
-
-class APIRequestError(APIException):
-
-    def __init__(self, *args, request=None, response=None, **kwargs):
+    def __init__(
+            self, *args, request=None, response=None,
+            status_code=None, **kwargs):
         super().__init__(*args, **kwargs)
+
         self.request = request
         self.response = response
-        if self.request is None and self.response is not None:
-            self.request = self.response.request
+        self.status_code = status_code
+
+        if self.response is not None:
+            if self.status_code is None:
+                self.status_code = getattr(self.response, 'status_code', None)
+            if self.request is None:
+                self.request = getattr(self.response, 'request', None)
 
     def __str__(self):
-        if self.request is None:
-            return ''
-        req = '{} {}'.format(self.request.method, self.request.url)
-        if self.response is None:
-            return req
-        resp = '{} {}'.format(self.response.status_code, self.response.reason)
-        return '{} -> {}'.format(req, resp)
+        parts = [
+            self.status_code,
+            getattr(self.request, 'method', None),
+            getattr(self.request, 'url', None),
+        ]
+        return ' '.join(str(item) for item in parts if item)
 
 
-class APINotFoundError(APIRequestError):
+class StormBadRequestError(StormAPIError):
+    """Exception raised when the API returns a '400 Bad Request' response."""
 
-    pass
+    def details(self):
+        try:
+            return self._details
+        except AttributeError:
+            pass
 
+        try:
+            self._details = self.response.json()
+        except Exception:
+            self._details = None
 
-class APIConflictError(APIRequestError):
-
-    pass
-
-
-class APIOSError(APIRequestError, OSError):
+        return self._details
 
     def __str__(self):
-        return '{}: {}'.format(APIRequestError.__str__(self), OSError.__str__(self))
+        s = super().__str__()
+        details = self.details()
+        if details is None:
+            return s
+        else:
+            return '{}: {!r}'.format(s, details)
 
 
-class APIConnectionError(APIOSError, ConnectionError):
-
-    pass
-
-
-class APIIOError(APIOSError, IOError):
-
-    pass
+class StormNotFoundError(StormAPIError):
+    """Exception raised when the API returns a '404 Not Found' response."""
 
 
-class ObjectNotFound(APIException):
-
-    pass
-
-
-class MultipleObjectsReturned(APIException):
-
-    pass
+class StormConflictError(StormAPIError):
+    """Exception raised when the API returns a '409 Conflict' response."""
 
 
-class TriggerError(PerfectStormException):
+class StormOSError(StormAPIError, OSError):
+    """
+    Exception raised when an OSError occurs while attempting to send a request
+    or receive a response.
+    """
+
+    def __str__(self):
+        return '{}: {}'.format(
+            StormAPIError.__str__(self), OSError.__str__(self))
+
+
+class StormConnectionError(StormOSError, ConnectionError):
+    """
+    Exception raised when ConnectionError occurs while attempting to send a
+    request or receive a response.
+    """
+
+
+class StormIOError(StormOSError, IOError):
+    """
+    Exception raised when an IOError occurs while attempting to send a request
+    or receive a response.
+    """
+
+
+class StormObjectNotFound(StormException):
+    """
+    Exception raised when a Model object cannot be retrieved because the Storm
+    API Server is returning a '404 Not Found' error.
+    """
+
+
+class StormMultipleObjectsReturned(StormException):
+    """
+    Exception raised when a single Model object is expected, but the Storm API
+    Server returned more than one.
+    """
+
+
+class StormTriggerError(StormException):
+    """Exception raised when the execution of a trigger fails."""
 
     def __init__(self, *args, trigger=None, **kwargs):
         super().__init__(*args, **kwargs)

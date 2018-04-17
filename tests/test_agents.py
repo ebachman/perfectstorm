@@ -18,7 +18,7 @@ class TestCreate(BaseTestCreate):
     invalid_data = [
         (
             {},
-            'type: field cannot be None',
+            'type: Field cannot be None',
             {'type': ['This field is required.']},
         ),
     ]

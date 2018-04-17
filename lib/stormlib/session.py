@@ -6,12 +6,13 @@ import requests
 from requests.exceptions import RequestException
 
 from .exceptions import (
-    APIConflictError,
-    APIConnectionError,
-    APIIOError,
-    APINotFoundError,
-    APIOSError,
-    APIRequestError,
+    StormAPIError,
+    StormBadRequestError,
+    StormConflictError,
+    StormConnectionError,
+    StormIOError,
+    StormNotFoundError,
+    StormOSError,
 )
 
 
@@ -109,6 +110,7 @@ class Session:
             raise RuntimeError('URL has been mangled: %r' % url)
 
     def request(self, method, path, decode_json=True, **kwargs):
+        method = method.upper()
         url = self.api_root / path
         self._check_url(url)
 
@@ -118,14 +120,13 @@ class Session:
                 response.raise_for_status()
             except requests.exceptions.RequestException as exc:
                 raise self.wrap_exception(exc)
-        except APIRequestError as exc:
-            log.error('%s', exc)
-            if log.isEnabledFor(logging.DEBUG) and exc.response is not None:
-                log.debug('Response body: %s', exc.response.text)
+        except Exception as exc:
+            log.error('%s %s -> %s', method, url, type(exc).__name__)
             raise
 
-        request = response.request
-        log.info('%s %s -> %s %s', request.method, request.url, response.status_code, response.reason)
+        log.info(
+            '%s %s -> %s %s',
+            method, url, response.status_code, response.reason)
 
         if decode_json:
             return response.json() if response.status_code != 204 else None
@@ -138,25 +139,26 @@ class Session:
             root_cause = root_cause.__context__
 
         exc_args = ()
-        request = getattr(exc, 'request')
-        response = getattr(exc, 'response')
+        exc_type = StormAPIError
+        request = getattr(exc, 'request', None)
+        response = getattr(exc, 'response', None)
 
-        if isinstance(root_cause, OSError) and not isinstance(root_cause, RequestException):
-            if isinstance(root_cause, ConnectionError):
-                exc_type = APIConnectionError
-            elif isinstance(root_cause, IOError):
-                exc_type = APIIOError
-            else:
-                exc_type = APIOSError
-            exc_args = (root_cause.errno, root_cause.strerror)
-        else:
+        if isinstance(root_cause, RequestException):
             status_code = getattr(response, 'status_code', None)
-            if status_code == 404:
-                exc_type = APINotFoundError
+            if status_code == 400:
+                exc_type = StormBadRequestError
+            elif status_code == 404:
+                exc_type = StormNotFoundError
             elif status_code == 409:
-                exc_type = APIConflictError
+                exc_type = StormConflictError
+        elif isinstance(root_cause, OSError):
+            if isinstance(root_cause, ConnectionError):
+                exc_type = StormConnectionError
+            elif isinstance(root_cause, IOError):
+                exc_type = StormIOError
             else:
-                exc_type = APIRequestError
+                exc_type = StormOSError
+            exc_args = (root_cause.errno, root_cause.strerror)
 
         return exc_type(*exc_args, request=request, response=response)
 

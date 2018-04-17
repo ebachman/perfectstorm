@@ -1,6 +1,6 @@
 import pytest
 
-from stormlib.exceptions import APIRequestError, ValidationError
+from stormlib.exceptions import StormBadRequestError, StormValidationError
 
 from .stubs import PLACEHOLDER
 
@@ -63,13 +63,13 @@ class BaseTestCreate:
         obj = self.model(**input_data)
         self.check_object_before_save(obj, input_data)
 
-        with pytest.raises(ValidationError) as excinfo:
+        with pytest.raises(StormValidationError) as excinfo:
             obj.save()
 
         self.check_client_error(obj, input_data, expected_error, excinfo)
 
     def test_server_validation(self, api_session, input_data, expected_error):
-        with pytest.raises(APIRequestError) as excinfo:
+        with pytest.raises(StormBadRequestError) as excinfo:
             api_session.post(self.model._path, json=input_data)
 
         self.check_server_error(input_data, expected_error, excinfo)
@@ -92,12 +92,12 @@ class BaseTestCreate:
 
     def check_client_error(self, obj, input_data, expected_error, excinfo):
         assert obj.id is None
-        assert type(excinfo.value) is ValidationError
+        assert type(excinfo.value) is StormValidationError
         assert str(excinfo.value) == expected_error, '{!r} != {!r}'.format(
             str(excinfo.value), expected_error)
 
     def check_server_error(self, input_data, expected_error, excinfo):
-        assert type(excinfo.value) is APIRequestError
+        assert type(excinfo.value) is StormBadRequestError
         assert excinfo.value.response.status_code == 400
         actual_error = excinfo.value.response.json()
         assert actual_error == expected_error, '{!r} != {!r}'.format(
