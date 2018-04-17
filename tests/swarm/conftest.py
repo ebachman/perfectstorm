@@ -9,7 +9,7 @@ from ..stubs import random_name
 @pytest.fixture(scope='session', autouse=True)
 def skip_without_swarm(request, api_session):
     """Skip the execution of tests if storm-swarm is not running."""
-    from perfectstorm import Agent, Resource
+    from stormlib import Agent, Resource
 
     swarm_agents = Agent.objects.filter(type='swarm')
     swarm_clusters = Resource.objects.filter(type='swarm-cluster')
@@ -22,13 +22,13 @@ def skip_without_swarm(request, api_session):
 
 @pytest.fixture(scope='session')
 def swarm_cluster():
-    from perfectstorm import Resource
+    from stormlib import Resource
     return random.choice(Resource.objects.filter(type='swarm-cluster'))
 
 
 @pytest.fixture(scope='session')
 def swarm_service(swarm_cluster):
-    from perfectstorm import Resource, Trigger
+    from stormlib import Resource, Trigger
 
     service_name = random_name()
 

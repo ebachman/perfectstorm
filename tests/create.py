@@ -1,6 +1,6 @@
 import pytest
 
-from perfectstorm.exceptions import APIRequestError, ValidationError
+from stormlib.exceptions import APIRequestError, ValidationError
 
 from .stubs import PLACEHOLDER
 

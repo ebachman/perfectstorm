@@ -9,9 +9,9 @@ import yaml
 
 import requests
 
-from perfectstorm import Resource
-from perfectstorm.cli import ExecutorClient
-from perfectstorm.executors import DiscoveryExecutor, ProcedureExecutor
+from stormlib import Resource
+from stormlib.cli import ExecutorClient
+from stormlib.executors import DiscoveryExecutor, ProcedureExecutor
 
 
 _var_re = re.compile(r'(?<!\$)\$(\w+|{[^}]*})')

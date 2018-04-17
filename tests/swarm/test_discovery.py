@@ -1,4 +1,4 @@
-from perfectstorm import Resource
+from stormlib import Resource
 
 
 def test_discovery(swarm_cluster, swarm_service):

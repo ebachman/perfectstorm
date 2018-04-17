@@ -5,8 +5,8 @@ import time
 
 import pytest
 
-from perfectstorm import events
-from perfectstorm.events import Event, Entity
+from stormlib import events
+from stormlib.events import Event, Entity
 
 from . import samples
 from .stubs import ANY

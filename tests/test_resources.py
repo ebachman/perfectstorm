@@ -1,7 +1,7 @@
 import pytest
 
-from perfectstorm import Resource
-from perfectstorm.exceptions import ObjectNotFound
+from stormlib import Resource
+from stormlib.exceptions import ObjectNotFound
 
 from .create import BaseTestCreateWithAgent
 from .stubs import IDENTIFIER, PLACEHOLDER, random_name

@@ -1,6 +1,6 @@
 import random
 
-from perfectstorm import Agent, Resource
+from stormlib import Agent, Resource
 
 from .stubs import random_name
 

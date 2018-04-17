@@ -15,15 +15,15 @@ def pytest_addoption(parser):
 
 @pytest.fixture(scope='session', autouse=True)
 def api_session(request):
-    import perfectstorm
+    import stormlib
     host = request.config.getoption('--api-server-host')
     port = request.config.getoption('--api-server-port')
-    return perfectstorm.connect(host, port)
+    return stormlib.connect(host, port)
 
 
 @pytest.fixture(scope='session', autouse=True)
 def cleanup(request):
-    from perfectstorm import Agent, Application, Group, Procedure
+    from stormlib import Agent, Application, Group, Procedure
 
     yield
 

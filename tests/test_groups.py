@@ -1,7 +1,7 @@
 import pytest
 
-from perfectstorm import Group
-from perfectstorm.exceptions import APIRequestError
+from stormlib import Group
+from stormlib.exceptions import APIRequestError
 
 from .create import BaseTestCreate
 from .stubs import IDENTIFIER, random_name

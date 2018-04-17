@@ -9,7 +9,7 @@ from operator import attrgetter
 
 import yaml
 
-from perfectstorm import (
+from stormlib import (
     Agent,
     Application,
     Group,
@@ -17,8 +17,8 @@ from perfectstorm import (
     Resource,
     Trigger,
 )
-from perfectstorm.base import Model
-from perfectstorm.cli import CommandLineClient
+from stormlib.base import Model
+from stormlib.cli import CommandLineClient
 
 
 def _model_representer(dumper, obj):

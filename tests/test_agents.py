@@ -1,4 +1,4 @@
-from perfectstorm import Agent
+from stormlib import Agent
 
 from .create import BaseTestCreate
 from .stubs import ANY, IDENTIFIER

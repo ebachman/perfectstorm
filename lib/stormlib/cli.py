@@ -85,7 +85,7 @@ class CommandLineClient(metaclass=abc.ABCMeta):
                 },
             },
             'loggers': {
-                'perfectstorm': {
+                'stormlib': {
                     'handlers': ['default'],
                     'level': 'DEBUG',
                     'propagate': True

@@ -1,6 +1,6 @@
 import pytest
 
-from perfectstorm import Resource
+from stormlib import Resource
 
 
 @pytest.mark.parametrize('filters, expected_query', [
