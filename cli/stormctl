@@ -446,8 +446,12 @@ class TriggerRunCommand(EntityCommand):
         parser.add_argument('-d', '--detach', action='store_true')
         parser.add_argument('-k', '--keep', action='store_true')
 
-        parser.add_argument('-o', '--option', dest='options', type=self._parse_trigger_arg, nargs='*', default=[])
-        parser.add_argument('-x', '--param', dest='params', type=self._parse_trigger_arg, nargs='*', default=[])
+        parser.add_argument(
+            '-o', '--option', dest='options',
+            type=self._parse_trigger_arg, action='append', default=[])
+        parser.add_argument(
+            '-x', '--param', dest='params',
+            type=self._parse_trigger_arg, action='append', default=[])
         parser.add_argument('-t', '--target')
 
         procedure_group = parser.add_mutually_exclusive_group(required=True)
