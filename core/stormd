@@ -90,13 +90,21 @@ def supports_colors(fp):
 
 class StormdLogger(glogging.Logger):
 
-    LOG_FORMAT = '[%(levelname)1.1s %(asctime)s] %(color)s%(message)s%(no_color)s'
+    LOG_FORMAT = (
+        '[%(levelname)1.1s %(asctime)s] %(color)s%(message)s%(no_color)s')
     DATE_FORMAT = '%Y-%m-%d %H:%M:%S %z'
 
     def setup(self, cfg):
         self.loglevel = self.LOG_LEVELS.get(cfg.loglevel.lower(), logging.INFO)
-        self.error_log.setLevel(self.loglevel)
-        self.access_log.setLevel(logging.INFO)
+
+        self.access_log.disabled = True
+        self.error_log.setLevel(logging.ERROR)
+
+        django_log = logging.getLogger('django')
+        django_log.setLevel(logging.ERROR)
+
+        stormcore_log = logging.getLogger('stormcore')
+        stormcore_log.setLevel(self.loglevel)
 
         formatter = StormdLogFormatter(
             fmt=self.LOG_FORMAT,
@@ -107,7 +115,8 @@ class StormdLogger(glogging.Logger):
         handler = logging.StreamHandler(stream=sys.stdout)
         handler.setFormatter(formatter)
 
-        for logger in (self.error_log, self.access_log):
+        for logger in (
+                self.access_log, self.error_log, django_log, stormcore_log):
             logger.addHandler(handler)
 
 

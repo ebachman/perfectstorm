@@ -44,6 +44,7 @@ MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'stormcore.middleware.RequestLogMiddleware',
 ]
 
 ROOT_URLCONF = 'stormcore.urls'
@@ -63,6 +64,13 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'stormcore.wsgi.application'
+
+
+# Logging
+# https://docs.djangoproject.com/en/2.0/ref/settings/#logging
+
+# Disable Django logging (it is set up by stormd)
+LOGGING_CONFIG = None
 
 
 # Database
