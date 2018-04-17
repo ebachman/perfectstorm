@@ -1,23 +1,43 @@
 import json
 from collections import namedtuple
 
+from . import models
+from .exceptions import StormObjectNotFound
 from .session import current_session
 
 
-Entity = namedtuple('Entity', 'type id names')
-Event = namedtuple('Event', 'index type entity')
+class Entity(namedtuple('BaseEntity', 'type id names')):
+
+    def retrieve(self):
+        """Return the Model object referenced by this Entity."""
+        try:
+            return self._obj
+        except AttributeError:
+            # Object has not been fetched yet
+            pass
+
+        model_name = self.type.capitalize()
+        if model_name not in models.__all__:
+            raise StormObjectNotFound(self.id)
+
+        model_class = getattr(models, model_name)
+        self._obj = model_class.objects.retrieve(self.id)
+        return self._obj
 
 
-def _json2event(data):
-    return Event(
-        index=data['id'],
-        type=data['event_type'],
-        entity=Entity(
-            type=data['entity_type'],
-            id=data['entity_id'],
-            names=data['entity_names'],
-        ),
-    )
+class Event(namedtuple('BaseEvent', 'index type entity')):
+
+    @classmethod
+    def _from_json(cls, data):
+        return cls(
+            index=data['id'],
+            type=data['event_type'],
+            entity=Entity(
+                type=data['entity_type'],
+                id=data['entity_id'],
+                names=data['entity_names'],
+            ),
+        )
 
 
 class EventReader:
@@ -39,7 +59,7 @@ class EventReader:
             params['count'] = count
 
         data = self._session.get(self.url, params=params)
-        return [_json2event(item) for item in data]
+        return [Event._from_json(item) for item in data]
 
     def stream(self, start=None):
         params = {'stream': 'true'}
@@ -52,7 +72,7 @@ class EventReader:
 
         for line in response.iter_lines():
             if line:
-                yield _json2event(json.loads(line))
+                yield Event._from_json(json.loads(line))
 
 
 def latest(start=None, count=None, session=None):
