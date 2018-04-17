@@ -2,7 +2,8 @@ import abc
 import json
 import threading
 
-from ..exceptions import APINotFoundError, ObjectNotFound, MultipleObjectsReturned
+from .exceptions import (
+    APINotFoundError, ObjectNotFound, MultipleObjectsReturned)
 from .fields import StringField
 from .session import current_session
 

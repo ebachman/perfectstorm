@@ -1,6 +1,6 @@
 import logging
 
-from .api import (
+from .models import (
     Agent,
     Application,
     Collection,
@@ -8,8 +8,8 @@ from .api import (
     Procedure,
     Resource,
     Trigger,
-    connect,
 )
+from .session import connect
 
 
 __all__ = [
@@ -27,5 +27,6 @@ version_info = (0, 1)
 __version__ = '0.1'
 
 
+# Prevent warnings if logging is not configured
 logging.getLogger(__name__).addHandler(logging.NullHandler())
 del logging

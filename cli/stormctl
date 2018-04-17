@@ -17,7 +17,7 @@ from perfectstorm import (
     Resource,
     Trigger,
 )
-from perfectstorm.api import Model
+from perfectstorm.base import Model
 from perfectstorm.cli import CommandLineClient
 
 

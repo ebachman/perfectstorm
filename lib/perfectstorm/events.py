@@ -1,7 +1,7 @@
 import json
 from collections import namedtuple
 
-from .api.session import current_session
+from .session import current_session
 
 
 Entity = namedtuple('Entity', 'type id names')

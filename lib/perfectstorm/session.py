@@ -5,7 +5,14 @@ import urllib.parse
 import requests
 from requests.exceptions import RequestException
 
-from .. import exceptions
+from .exceptions import (
+    APIConflictError,
+    APIConnectionError,
+    APIIOError,
+    APINotFoundError,
+    APIOSError,
+    APIRequestError,
+)
 
 
 log = logging.getLogger(__name__)
@@ -111,7 +118,7 @@ class Session:
                 response.raise_for_status()
             except requests.exceptions.RequestException as exc:
                 raise self.wrap_exception(exc)
-        except exceptions.APIRequestError as exc:
+        except APIRequestError as exc:
             log.error('%s', exc)
             if log.isEnabledFor(logging.DEBUG) and exc.response is not None:
                 log.debug('Response body: %s', exc.response.text)
@@ -136,20 +143,20 @@ class Session:
 
         if isinstance(root_cause, OSError) and not isinstance(root_cause, RequestException):
             if isinstance(root_cause, ConnectionError):
-                exc_type = exceptions.APIConnectionError
+                exc_type = APIConnectionError
             elif isinstance(root_cause, IOError):
-                exc_type = exceptions.APIIOError
+                exc_type = APIIOError
             else:
-                exc_type = exceptions.APIOSError
+                exc_type = APIOSError
             exc_args = (root_cause.errno, root_cause.strerror)
         else:
             status_code = getattr(response, 'status_code', None)
             if status_code == 404:
-                exc_type = exceptions.APINotFoundError
+                exc_type = APINotFoundError
             elif status_code == 409:
-                exc_type = exceptions.APIConflictError
+                exc_type = APIConflictError
             else:
-                exc_type = exceptions.APIRequestError
+                exc_type = APIRequestError
 
         return exc_type(*exc_args, request=request, response=response)
 

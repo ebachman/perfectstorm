@@ -5,8 +5,7 @@ import sys
 import time
 import traceback
 
-from . import api
-from .api import Agent
+from . import Agent, session
 from .executors import RestartingProcessExecutorRunner
 
 
@@ -56,7 +55,7 @@ class CommandLineClient(metaclass=abc.ABCMeta):
         return parser
 
     def add_arguments(self, parser):
-        default_addr = '%s:%d' % (api.DEFAULT_HOST, api.DEFAULT_PORT)
+        default_addr = '%s:%d' % (session.DEFAULT_HOST, session.DEFAULT_PORT)
         parser.add_argument(
             '-C', '--connect', metavar='HOST[:PORT]', default=default_addr,
             help='Address to the Perfect Storm API server (default: {})'.format(default_addr))
@@ -67,7 +66,7 @@ class CommandLineClient(metaclass=abc.ABCMeta):
     def connect_api(self):
         host, port = self.options.connect.rsplit(':', 1)
         port = int(port)
-        api.connect(host, port)
+        session.connect(host, port)
 
     def enable_debug(self):
         logging.config.dictConfig({

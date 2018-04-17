@@ -1,8 +1,8 @@
 import time
 import traceback
 
-from ..exceptions import TriggerError
 from .base import Model, Collection
+from .exceptions import TriggerError
 from .fields import StringField, ListField, DictField
 from .heartbeat import Heartbeat
 

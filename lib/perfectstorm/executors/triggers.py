@@ -1,6 +1,6 @@
 import abc
 
-from ..api import Trigger, Procedure
+from .. import Trigger, Procedure
 from . import AgentExecutor, PollingExecutor
 
 
