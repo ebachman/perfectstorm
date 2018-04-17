@@ -250,7 +250,7 @@ class TriggerViewSet(CleanupAgentsMixin, QueryFilterMixin, ModelViewSet):
         # Atomically transition the status from 'pending' to 'running', setting the
         # owner at the same time
         qs = Trigger.objects.filter(id=trigger.id, status='pending')
-        qs.update(set__status='running', set__owner=agent)
+        qs.update(set__status='running', set__owner=agent.id)
 
         # Check the status of the trigger. Because we used an atomic operation, the
         # scenarios are three:
@@ -267,7 +267,7 @@ class TriggerViewSet(CleanupAgentsMixin, QueryFilterMixin, ModelViewSet):
 
         trigger.reload()
 
-        if trigger.status != 'running' or trigger.owner.id != agent:
+        if trigger.status != 'running' or trigger.owner.id != agent.id:
             # Case 1 or 2, error
             return Response(
                 {'status': ["Trigger is not in 'pending' state"]},
