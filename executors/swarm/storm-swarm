@@ -288,19 +288,15 @@ class SwarmDiscoveryExecutor(DockerExecutorMixin, DiscoveryExecutor):
         resource.save()
 
     def _get_task_names(self, data):
-        task_id = data['ID']
-        names = [task_id]
-
-        try:
-            names.append(data['Status']['ContainerStatus']['ContainerID'])
-        except KeyError:
-            pass
+        names = []
 
         try:
             service_id = data['ServiceID']
             service_name = self.snapshot.services[service_id]['Spec']['Name']
         except KeyError:
             service_name = None
+
+        task_id = data['ID']
 
         if service_name:
             if 'Slot' in data:
@@ -310,6 +306,13 @@ class SwarmDiscoveryExecutor(DockerExecutorMixin, DiscoveryExecutor):
 
             names.append(task_name)
             names.append(f'{task_name}.{task_id}')
+
+        names.append(task_id)
+
+        try:
+            names.append(data['Status']['ContainerStatus']['ContainerID'])
+        except KeyError:
+            pass
 
         return names
 
