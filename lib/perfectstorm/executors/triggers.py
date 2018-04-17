@@ -49,8 +49,10 @@ class ProcedureExecutor(TriggerExecutor):
 
         procedure = Procedure.objects.get(trigger.procedure)
 
-        # XXX procedure.options.update(trigger.options)
-        # XXX procedure.params.update(trigger.params)
+        if trigger.options:
+            procedure.options.update(trigger.options)
+        if trigger.params:
+            procedure.params.update(trigger.params)
 
         return procedure
 
