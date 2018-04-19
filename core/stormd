@@ -91,7 +91,8 @@ def supports_colors(fp):
 class StormdLogger(glogging.Logger):
 
     LOG_FORMAT = (
-        '[%(levelname)1.1s %(asctime)s] %(color)s%(message)s%(no_color)s')
+        '%(meta_color)s[%(levelname)1.1s %(asctime)s]%(no_color)s '
+        '%(color)s%(message)s%(no_color)s')
     DATE_FORMAT = '%Y-%m-%d %H:%M:%S %z'
 
     def setup(self, cfg):
@@ -123,11 +124,12 @@ class StormdLogger(glogging.Logger):
 class StormdLogFormatter(logging.Formatter):
 
     COLOR_CODES = {
-        logging.DEBUG: 4,
-        logging.INFO: 2,
-        logging.WARNING: 3,
-        logging.ERROR: 1,
-        logging.CRITICAL: 1,
+        'meta': 7,
+        'DEBUG': 0,
+        'INFO': 4,
+        'WARNING': 3,
+        'ERROR': 1,
+        'CRITICAL': 1,
     }
 
     def __init__(self, colors=False, **kwargs):
@@ -140,19 +142,20 @@ class StormdLogFormatter(logging.Formatter):
                 b'')
 
             self._colors = {
-                levelno: curses.tparm(color_cap, color_code).decode('ascii')
-                for levelno, color_code in self.COLOR_CODES.items()
+                key: curses.tparm(color_cap, color_code).decode('ascii')
+                for key, color_code in self.COLOR_CODES.items()
             }
 
             self._no_color = curses.tigetstr('sgr0').decode('ascii')
         else:
             self._colors = {
-                levelno: '' for levelno in self.COLOR_CODES
+                key: '' for key in self.COLOR_CODES
             }
             self._no_color = ''
 
     def format(self, record):
-        record.color = self._colors[record.levelno]
+        record.meta_color = self._colors['meta']
+        record.color = self._colors[record.levelname]
         record.no_color = self._no_color
         return super().format(record)
 
