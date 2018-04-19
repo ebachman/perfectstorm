@@ -536,4 +536,4 @@ class StormCtl(CommandLineClient):
 
 
 if __name__ == '__main__':
-    StormCtl.main()
+    StormCtl().main()

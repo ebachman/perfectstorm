@@ -1,29 +1,68 @@
 #!/usr/bin/env python3
 
-import collections
-import re
-import shlex
-import subprocess
+import gevent.monkey
+gevent.monkey.patch_all()
+# Prevent 'KeyboardInterrupt' lines from being printed
+# on standard error
+gevent.get_hub().NOT_ERROR += (KeyboardInterrupt,)
 
-import yaml
+import re  # noqa: E402
+import shlex  # noqa: E402
+import subprocess  # noqa: E402
 
-import requests
+import yaml  # noqa: E402
 
-from stormlib import Resource
-from stormlib.cli import ExecutorClient
-from stormlib.executors import DiscoveryExecutor, ProcedureExecutor
+import requests  # noqa: E402
+
+from stormlib import Resource  # noqa: E402
+from stormlib.cli import AgentClient  # noqa: E402
+from stormlib.exceptions import StormValidationError  # noqa: E402
+from stormlib.executors import (  # noqa: E402
+    DiscoveryExecutor,
+    DiscoveryProbe,
+    GeventJobsExecutor,
+    GeventPipelineExecutor,
+    ProcedureExecutor,
+    ProcedureRunner,
+)
 
 
 _var_re = re.compile(r'(?<!\$)\$(\w+|{[^}]*})')
 _image_re = re.compile(r'^(?:(.+)/)?(.+)(?::(.+))?(?:@(.+))?$')
-_cluster_id_re = re.compile(r'^ ClusterID: (.+)$', re.MULTILINE)
-
-DockerSnapshot = collections.namedtuple('DockerSnapshot', 'info services tasks')
 
 
-class DockerCommand:
+class Swarm:
 
-    def __init__(self, address, args):
+    def __init__(self, address):
+        self.address = address
+        self._cluster_id = None
+
+    def get_json(self, path):
+        url = 'http://{}/{}'.format(self.address, path)
+        response = requests.get(url)
+        response.raise_for_status()
+        return response.json()
+
+    @property
+    def cluster_id(self):
+        if self._cluster_id is None:
+            data = self.get_json('info')
+            self._cluster_id = data['Swarm']['Cluster']['ID']
+        return self._cluster_id
+
+
+class SwarmMixin:
+
+    def __init__(self, swarm, *args, **kwargs):
+        self.swarm = swarm
+        super().__init__(*args, **kwargs)
+
+
+class DockerCommand(SwarmMixin):
+
+    def __init__(self, swarm, args):
+        super().__init__(swarm=swarm)
+
         var = None
         err = False
 
@@ -44,7 +83,9 @@ class DockerCommand:
                 err = True
 
         if err:
-            raise TypeError('args must be a string, a list of strings or a dictionary containing a single item')
+            raise TypeError(
+                'args must be a string, a list of strings or a dictionary '
+                'containing a single item')
 
         if len(args) < 1:
             raise ValueError('Empty command')
@@ -52,7 +93,6 @@ class DockerCommand:
         self.var = var
         self.cmd = args[0]
         self.args = args[1:]
-        self.address = address
 
     def expand_args(self, environ):
         expanded_args = []
@@ -81,8 +121,10 @@ class DockerCommand:
         if environ is None:
             environ = {}
 
-        args = ['docker', '--host', self.address, self.cmd] + self.expand_args(environ)
-        process = subprocess.run(args, input=b'', check=True, stdout=subprocess.PIPE)
+        args = ['docker', '--host', self.swarm.address, self.cmd]
+        args += self.expand_args(environ)
+        process = subprocess.run(
+            args, input=b'', check=True, stdout=subprocess.PIPE)
         output = process.stdout.decode().strip()
 
         if self.var is not None:
@@ -91,223 +133,115 @@ class DockerCommand:
         return output
 
 
-class DockerExecutorMixin:
+class SwarmProcedureRunner(SwarmMixin, ProcedureRunner):
 
-    def __init__(self, agent, docker_address, **kwargs):
-        super().__init__(agent, **kwargs)
-        self.docker_address = docker_address
+    def prepare(self):
+        super().prepare()
 
-
-class SwarmProcedureExecutor(DockerExecutorMixin, ProcedureExecutor):
-
-    def _command(self, args):
-        return DockerCommand(self.docker_address, args)
-
-    def before_run(self):
-        super().before_run()
-
-        cmd = self._command(['info'])
-        info = cmd.run()
-
-        match = _cluster_id_re.search(info)
-        if not match:
-            raise RuntimeError('Could not find Swarm Cluster ID')
-
-        self.cluster_id = match.group(1)
-
-    def get_pending_triggers(self):
-        qs = super().get_pending_triggers()
-        return qs.filter(target=self.cluster_id)
-
-    def get_procedure(self, trigger):
-        procedure = super().get_procedure(trigger)
-        commands = yaml.safe_load(procedure.content)
+        commands = yaml.safe_load(self.trigger.content)
         if not isinstance(commands, list):
-            raise TypeError('Procedure content is expected to be a list of commands')
-        self.commands = [self._command(item) for item in commands]
-        return procedure
+            raise StormValidationError(
+                'Procedure content is expected to be a list of commands')
 
-    def run_procedure(self, procedure):
-        environ = dict(procedure.params)
+        self.commands = [
+            DockerCommand(self.swarm, item) for item in commands]
+
+    def run(self):
+        environ = dict(self.trigger.params)
         for command in self.commands:
             command.run(environ)
 
 
-class SwarmDiscoveryExecutor(DockerExecutorMixin, DiscoveryExecutor):
+class SwarmProcedureExecutor(
+        SwarmMixin, ProcedureExecutor, GeventJobsExecutor):
 
-    def _get_json(self, path):
-        url = 'http://{}/{}'.format(self.docker_address, path.lstrip('/'))
-        response = requests.get(url)
-        response.raise_for_status()
-        return response.json()
+    def get_pending_triggers(self):
+        qs = super().get_pending_triggers()
+        return qs.filter(target=self.swarm.cluster_id)
 
-    def _get_cluster_id(self, data):
+    def get_procedure_runner(self, agent, trigger):
+        return SwarmProcedureRunner(self.swarm, agent, trigger)
+
+
+class SwarmClusterProbe(SwarmMixin, DiscoveryProbe):
+
+    resource_type = 'swarm-cluster'
+
+    def get_snapshots(self):
+        data = self.swarm.get_json('info')
+        # Remove SystemTime to avoid unnecessary updates
+        del data['SystemTime']
+        return [data]
+
+    def get_internal_id(self, data):
         return data['Swarm']['Cluster']['ID']
 
-    @property
-    def swarm_cluster_id(self):
-        return self._get_cluster_id(self.snapshot.info)
-
-    def take_current_snapshot(self):
-        info = self._get_json('/info')
-        del info['SystemTime']
-
-        services = self._get_json('/services')
-        services = {data['ID']: data for data in services}
-
-        tasks = self._get_json('/tasks')
-        tasks = {data['ID']: data for data in tasks}
-
-        return DockerSnapshot(info, services, tasks)
-
-    def take_stored_snapshot(self):
-        resources = Resource.objects.all()
-
-        info = None
-        services = {}
-        tasks = {}
-
-        for resource in resources:
-            if self.swarm_cluster_id in resource.names:
-                info = resource.snapshot
-            elif resource.parent == self.swarm_cluster_id:
-                services[resource.id] = resource.snapshot
-
-        for resource in resources:
-            if resource.parent in services:
-                tasks[resource.id] = resource.snapshot
-
-        return DockerSnapshot(info, services, tasks)
-
-    def _compare_collections(self, prev_collection, curr_collection):
-        prev_set = set(prev_collection)
-        curr_set = set(curr_collection)
-
-        created = curr_set.difference(prev_set)
-        deleted = prev_set.difference(curr_set)
-
-        common = prev_set & curr_set
-        updated = {
-            resource_id for resource_id in common
-            if prev_collection[resource_id] != curr_collection[resource_id]
-        }
-
-        return created, updated, deleted
-
-    def compare_snapshots(self, prev, curr):
-        created = []
-        updated = []
-        deleted = []
-
-        if prev is None:
-            # First run
-            created.append(('info', curr.info))
-            created.extend(
-                ('service', service)
-                for service in curr.services.values()
-            )
-            created.extend(
-                ('task', task)
-                for task in curr.tasks.values()
-            )
-
-        else:
-            # Compare info
-            if prev.info is None:
-                created.append(('info', curr.info))
-            elif prev.info != curr.info:
-                updated.append(('info', curr.info))
-
-            # Compare services
-            created_services, updated_services, deleted_services = self._compare_collections(
-                prev.services, curr.services)
-
-            created.extend(('service', curr.services[service_id]) for service_id in created_services)
-            updated.extend(('service', curr.services[service_id]) for service_id in updated_services)
-            deleted.extend(('service', prev.services[service_id]) for service_id in deleted_services)
-
-            # Compare tasks
-            created_tasks, updated_tasks, deleted_tasks = self._compare_collections(
-                prev.tasks, curr.tasks)
-
-            created.extend(('task', curr.tasks[task_id]) for task_id in created_tasks)
-            updated.extend(('task', curr.tasks[task_id]) for task_id in updated_tasks)
-            deleted.extend(('task', prev.tasks[task_id]) for task_id in deleted_tasks)
-
-        # Return differences
-        return created, updated, deleted
-
-    def create_resource(self, resource_data):
-        self.save_resource(resource_data)
-
-    def update_resource(self, resource_data):
-        self.save_resource(resource_data)
-
-    def save_resource(self, resource_data):
-        resource_type, resource_data = resource_data
-
-        if resource_type == 'info':
-            self.save_swarm_info(resource_data)
-        elif resource_type == 'service':
-            self.save_service(resource_data)
-        elif resource_type == 'task':
-            self.save_task(resource_data)
-        else:
-            raise AssertionError(resource_type)
-
-    def save_swarm_info(self, data):
-        cluster_id = self._get_cluster_id(data)
-
-        resource = Resource(
-            id=cluster_id,
-            type='swarm-cluster',
-            names=[cluster_id],
-            owner=self.agent.id,
+    def model_resource(self, data):
+        return Resource(
+            names=[
+                data['Swarm']['Cluster']['Spec']['Name'],
+                data['Swarm']['Cluster']['ID'],
+            ],
             status='running',
             health='healthy',
-            snapshot=data,
         )
 
-        resource.save()
 
-    def _get_service_names(self, data):
-        return [data['Spec']['Name'], data['ID']]
+class SwarmServiceProbe(SwarmMixin, DiscoveryProbe):
 
-    def save_service(self, data):
-        resource = Resource(
-            id=data['ID'],
-            type='swarm-service',
-            owner=self.agent.id,
-            parent=self._get_cluster_id(self.snapshot.info),
-            names=self._get_service_names(data),
+    resource_type = 'swarm-service'
+
+    def get_snapshots(self):
+        return self.swarm.get_json('services')
+
+    def get_internal_id(self, data):
+        return data['ID']
+
+    def model_resource(self, data):
+        return Resource(
+            parent=self.swarm.cluster_id,
+            names=[
+                data['Spec']['Name'],
+                data['ID'],
+            ],
             status='running',
             health='healthy',
-            snapshot=data,
         )
 
-        resource.save()
 
-    def _get_task_names(self, data):
+class SwarmTaskProbe(SwarmMixin, DiscoveryProbe):
+
+    resource_type = 'swarm-task'
+
+    def __init__(self, executor, *args, **kwargs):
+        self.executor = executor
+        super().__init__(*args, **kwargs)
+
+    def get_snapshots(self):
+        return self.swarm.get_json('tasks')
+
+    def get_internal_id(self, data):
+        return data['ID']
+
+    def get_task_names(self, data):
         names = []
 
         try:
             service_id = data['ServiceID']
-            service_name = self.snapshot.services[service_id]['Spec']['Name']
+            service_data = self.executor.snapshots[service_id].data
+            service_name = service_data['Spec']['Name']
         except KeyError:
             service_name = None
 
-        task_id = data['ID']
-
         if service_name:
-            if 'Slot' in data:
-                task_name = f'{service_name}.{data["Slot"]}'
-            else:
-                task_name = f'{service_name}.{data["NodeID"]}'
+            task_name_suffix = (
+                str(data['Slot']) if 'Slot' in data else data['NodeID'])
+            task_name = '.'.join((service_name, task_name_suffix))
 
             names.append(task_name)
-            names.append(f'{task_name}.{task_id}')
+            names.append('.'.join((task_name, data['ID'])))
 
-        names.append(task_id)
+        names.append(data['ID'])
 
         try:
             names.append(data['Status']['ContainerStatus']['ContainerID'])
@@ -316,7 +250,7 @@ class SwarmDiscoveryExecutor(DockerExecutorMixin, DiscoveryExecutor):
 
         return names
 
-    def _get_task_image(self, data):
+    def get_task_image(self, data):
         match = _image_re.match(data['Spec']['ContainerSpec']['Image'])
         repository, name, tag, digest = match.groups()
 
@@ -332,7 +266,7 @@ class SwarmDiscoveryExecutor(DockerExecutorMixin, DiscoveryExecutor):
 
         return image
 
-    def _get_task_status(self, data):
+    def get_task_status(self, data):
         docker2storm_status = {
             'new': 'created',
             'allocated': 'created',
@@ -351,29 +285,33 @@ class SwarmDiscoveryExecutor(DockerExecutorMixin, DiscoveryExecutor):
 
         return docker2storm_status.get(data['Status']['State'], 'unknown')
 
-    def save_task(self, data):
-        resource = Resource(
-            id=data['ID'],
-            type='swarm-task',
-            owner=self.agent.id,
+    def model_resource(self, data):
+        return Resource(
             parent=data['ServiceID'],
-            names=self._get_task_names(data),
-            image=self._get_task_image(data),
-            status=self._get_task_status(data),
+            names=self.get_task_names(data),
+            image=self.get_task_image(data),
+            status=self.get_task_status(data),
             health='healthy',
-            snapshot=data,
         )
 
-        resource.save()
 
-    def delete_resource(self, resource_data):
-        resource_type, resource_data = resource_data
-        Resource.objects.get(resource_data['ID']).delete()
+class SwarmDiscoveryExecutor(SwarmMixin, DiscoveryExecutor):
+
+    def get_probes(self):
+        return [
+            SwarmClusterProbe(self.swarm),
+            SwarmServiceProbe(self.swarm),
+            SwarmTaskProbe(self, self.swarm),
+        ]
 
 
-class SwarmDeployerClient(ExecutorClient):
+class SwarmClient(AgentClient):
 
     agent_type = 'swarm'
+
+    def setup(self):
+        super().setup()
+        self.swarm = Swarm(self.options.host)
 
     def add_arguments(self, parser):
         super().add_arguments(parser)
@@ -381,12 +319,16 @@ class SwarmDeployerClient(ExecutorClient):
             '-H', '--host', metavar='HOST[:PORT]', required=True,
             help='Docker daemon to connect to')
 
-    def get_executors(self):
-        return [
-            SwarmDiscoveryExecutor(self.agent, self.options.host),
-            SwarmProcedureExecutor(self.agent, self.options.host),
-        ]
+    def run(self):
+        executor = GeventPipelineExecutor(
+            jobs=[
+                SwarmDiscoveryExecutor(swarm=self.swarm, agent=self.agent),
+                SwarmProcedureExecutor(swarm=self.swarm, agent=self.agent),
+            ],
+            restart_jobs=True)
+
+        executor()
 
 
 if __name__ == '__main__':
-    SwarmDeployerClient.main()
+    SwarmClient().main()
