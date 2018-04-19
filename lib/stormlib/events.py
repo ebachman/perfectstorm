@@ -70,9 +70,35 @@ class EventReader:
             self.url, params=params,
             stream=True, decode_json=False)
 
-        for line in response.iter_lines():
-            if line:
-                yield Event._from_json(json.loads(line))
+        it = (
+            Event._from_json(json.loads(line))
+            for line in response.iter_lines()
+            if line
+        )
+
+        return EventsStream(response, it)
+
+
+class EventsStream:
+
+    def __init__(self, response, iterator):
+        self._response = response
+        self._iterator = iterator
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        return next(self._iterator)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, exc_tb):
+        self.close()
+
+    def close(self):
+        self._response.close()
 
 
 def latest(start=None, count=None, session=None):
