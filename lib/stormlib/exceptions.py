@@ -101,13 +101,6 @@ class StormConnectionError(StormOSError, ConnectionError):
     """
 
 
-class StormIOError(StormOSError, IOError):
-    """
-    Exception raised when an IOError occurs while attempting to send a request
-    or receive a response.
-    """
-
-
 class StormObjectNotFound(StormException):
     """
     Exception raised when a Model object cannot be retrieved because the Storm

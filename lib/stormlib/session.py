@@ -10,7 +10,6 @@ from .exceptions import (
     StormBadRequestError,
     StormConflictError,
     StormConnectionError,
-    StormIOError,
     StormNotFoundError,
     StormOSError,
 )
@@ -154,8 +153,6 @@ class Session:
         elif isinstance(root_cause, OSError):
             if isinstance(root_cause, ConnectionError):
                 exc_type = StormConnectionError
-            elif isinstance(root_cause, IOError):
-                exc_type = StormIOError
             else:
                 exc_type = StormOSError
             exc_args = (root_cause.errno, root_cause.strerror)
