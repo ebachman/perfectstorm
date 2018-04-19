@@ -147,6 +147,8 @@ class MultipleEntitiesCommand(EntityCommand):
 class EntityImporter:
 
     def __call__(self, client, data, model):
+        if 'id' not in data and 'name' in data:
+            data = {'id': data['name'], **data}
         model(**data).save()
 
 
