@@ -388,6 +388,11 @@ class EventView(View):
 
         new_events_qs = self.queryset.filter(id__gt=last_event_id)
 
+        # Begin by sending an empty line: this ensures that the response
+        # headers are sent by Gunicorn. If we didn't do that, clients would
+        # hang in case no events are delivered.
+        yield '\n'
+
         while True:
             cursor = new_events_qs._collection.find(
                 new_events_qs._query,
