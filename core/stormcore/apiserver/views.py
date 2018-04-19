@@ -156,7 +156,8 @@ class CleanupAgentsMixin:
         return super().dispatch(*args, **kwargs)
 
 
-class AgentViewSet(CleanupAgentsMixin, QueryFilterMixin, ModelViewSet):
+class AgentViewSet(
+        CleanupAgentsMixin, MultiLookupMixin, QueryFilterMixin, ModelViewSet):
 
     queryset = Agent.objects.all()
     serializer_class = AgentSerializer

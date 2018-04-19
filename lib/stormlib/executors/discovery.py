@@ -34,7 +34,7 @@ class DiscoveryExecutor(AgentExecutorMixin, PollingExecutor):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.snapshots = {}
+        self.snapshots = None
         self.probes = {
             probe.resource_type: probe
             for probe in self.get_probes()

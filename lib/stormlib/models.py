@@ -22,6 +22,8 @@ class Agent(Model):
     _path = 'v1/agents'
 
     type = StringField()
+    name = StringField(null=True)
+    status = StringField(default='offline')
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

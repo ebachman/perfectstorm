@@ -11,7 +11,7 @@ def skip_without_swarm(request, api_session):
     """Skip the execution of tests if storm-swarm is not running."""
     from stormlib import Agent, Resource
 
-    swarm_agents = Agent.objects.filter(type='swarm')
+    swarm_agents = Agent.objects.filter(type='swarm', status='online')
     swarm_clusters = Resource.objects.filter(type='swarm-cluster')
 
     if not swarm_agents:

@@ -143,7 +143,7 @@ def cleanup_expired_agents():
     now = time.time()
     if now - _cleanup_timestamp < _cleanup_interval:
         return
-    Agent.objects.expired().delete()
+    Agent.objects.expired().update(status='offline')
     _cleanup_timestamp = time.time()
 
 
@@ -321,11 +321,19 @@ class AgentQuerySet(StormQuerySet):
         super().delete(*args, **kwargs)
 
 
-class Agent(TypeMixin, StormDocument):
+class Agent(NameMixin, TypeMixin, StormDocument):
 
     HEARTBEAT_DURATION = timedelta(seconds=60)
 
+    STATUS_CHOICES = (
+        ('online', 'Online'),
+        ('offline', 'Offline'),
+    )
+
     heartbeat = DateTimeField(default=datetime.now, required=True)
+
+    status = StringField(
+        choices=STATUS_CHOICES, default='offline', required=True)
 
     meta = {
         'id_prefix': 'agt-',

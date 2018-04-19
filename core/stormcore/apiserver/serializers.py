@@ -68,9 +68,13 @@ class EscapedDictField(Field):
 
 class AgentSerializer(DocumentSerializer):
 
+    name = CharField(
+        allow_blank=False, allow_null=True, required=False,
+        validators=[UniqueValidator(Agent.objects.all())])
+
     class Meta:
         model = Agent
-        fields = ('id', 'type', 'heartbeat')
+        fields = ('id', 'type', 'name', 'heartbeat', 'status')
 
 
 class ResourceSerializer(DocumentSerializer):

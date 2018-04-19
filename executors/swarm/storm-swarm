@@ -14,7 +14,7 @@ import yaml  # noqa: E402
 
 import requests  # noqa: E402
 
-from stormlib import Resource  # noqa: E402
+from stormlib import Agent, Resource  # noqa: E402
 from stormlib.cli import AgentClient  # noqa: E402
 from stormlib.exceptions import StormValidationError  # noqa: E402
 from stormlib.executors import (  # noqa: E402
@@ -307,17 +307,19 @@ class SwarmDiscoveryExecutor(SwarmMixin, DiscoveryExecutor):
 
 class SwarmClient(AgentClient):
 
-    agent_type = 'swarm'
-
-    def setup(self):
-        super().setup()
-        self.swarm = Swarm(self.options.host)
-
     def add_arguments(self, parser):
         super().add_arguments(parser)
         parser.add_argument(
             '-H', '--host', metavar='HOST[:PORT]', required=True,
             help='Docker daemon to connect to')
+
+    def get_agent(self):
+        self.swarm = Swarm(self.options.host)
+
+        data = self.swarm.get_json('info')
+        cluster_id = data['Swarm']['Cluster']['ID']
+
+        return Agent(type='swarm', name='swarm-' + cluster_id)
 
     def run(self):
         executor = GeventPipelineExecutor(

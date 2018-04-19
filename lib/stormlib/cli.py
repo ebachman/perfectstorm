@@ -3,7 +3,7 @@ import argparse
 import logging.config
 import sys
 
-from . import Agent, session
+from . import session
 
 
 class CommandLineClient(metaclass=abc.ABCMeta):
@@ -91,17 +91,17 @@ class CommandLineClient(metaclass=abc.ABCMeta):
 
 class AgentClient(CommandLineClient):
 
-    @property
-    @abc.abstractmethod
-    def agent_type(self):
-        raise NotImplementedError
-
     def setup(self):
         super().setup()
         self.setup_agent()
 
     def setup_agent(self):
-        self.agent = Agent(type=self.agent_type)
+        self.agent = self.get_agent()
+
+        if self.agent.id is None:
+            self.agent.id = self.agent.name
+
+        self.agent.status = 'online'
         self.agent.save()
         self.agent.heartbeat.start()
 
@@ -111,4 +111,5 @@ class AgentClient(CommandLineClient):
 
     def teardown_agent(self):
         self.agent.heartbeat.stop()
-        self.agent.delete()
+        self.agent.status = 'offline'
+        self.agent.save()
