@@ -40,6 +40,41 @@ class Event(namedtuple('BaseEvent', 'index type entity')):
         )
 
 
+class EventMask(namedtuple(
+        'BaseEventMask', 'event_type entity_type entity_id entity_names')):
+
+    def __new__(
+            cls, event_type=None, entity=None,
+            entity_type=None, entity_id=None, entity_names=None):
+        if entity is not None:
+            if (entity_type is not None or
+                    entity_id is not None or
+                    entity_names is not None):
+                raise TypeError(
+                    'entity cannot be specified together with entity_type, '
+                    'entity_id or entity_names')
+            entity_type = type(entity).__name__.lower()
+            entity_id = entity.id
+
+        if entity_names is not None:
+            entity_names = frozenset(entity_names)
+
+        return super().__new__(
+            cls, event_type, entity_type, entity_id, entity_names)
+
+    def matches(self, event):
+        return (
+            (self.event_type is None or
+                self.event_type == event.type) and
+            (self.entity_type is None or
+                self.entity_type == event.entity.type) and
+            (self.entity_id is None or
+                self.entity_id == event.entity.id) and
+            (not self.entity_names or
+                not self.entity_names & set(event.entity.names))
+        )
+
+
 class EventReader:
 
     def __init__(self, session=None):
@@ -99,6 +134,36 @@ class EventsStream:
 
     def close(self):
         self._response.close()
+
+
+class EventFilter:
+
+    def __init__(self, masks=()):
+        self.registered_events = set()
+        for event_mask in masks:
+            self.register(event_mask)
+
+    def register(self, event_mask):
+        self.registered_events.add(event_mask)
+
+    def match(self, event):
+        return tuple(
+            event_mask for event_mask in self.registered_events
+            if event_mask.matches(event)
+        )
+
+    def _filter(self, stream):
+        for event in stream:
+            masks = self.match(event)
+            if masks:
+                yield event, masks
+
+    def __call__(self, stream):
+        it = self._filter(stream)
+        if isinstance(stream, EventsStream):
+            return EventsStream(stream, it)
+        else:
+            return it
 
 
 def latest(start=None, count=None, session=None):
