@@ -180,6 +180,8 @@ class StormdApplication(BaseApplication):
             self.cfg.set('loglevel', 'DEBUG')
         self.cfg.set('logger_class', StormdLogger)
 
+        self.cfg.set('when_ready', self.log_start)
+
         # Gunicorn recommends using (2 * cpu + 1) as the number of workers
         self.cfg.set('workers', multiprocessing.cpu_count() * 2 + 1)
         self.cfg.set('worker_class', 'gevent')
@@ -194,6 +196,16 @@ class StormdApplication(BaseApplication):
     def load(self):
         from stormcore.wsgi import application
         return application
+
+    # This needs to be a staticmethod or otherwise Gunicorn will complain
+    # when calling cfg.set('when_ready', log_start)
+    @staticmethod
+    def log_start(server):
+        logger = logging.getLogger('stormcore')
+        addresses = ', '.join(
+            str(listener) for listener in server.LISTENERS)
+        logger.info('stormd version 0.1')
+        logger.info('Listening at: %s', addresses)
 
 
 def run():
