@@ -17,17 +17,6 @@ __all__ = [
 ]
 
 
-def json_exception(exc_value):
-    exc_type = type(exc_value)
-    exc_tb = exc_value.__traceback__
-
-    return {
-        'type': '.'.join((exc_type.__module__, exc_type.__name__)),
-        'exception': traceback.format_exception_only(exc_type, exc_value),
-        'traceback': traceback.format_exception(exc_type, exc_value, exc_tb),
-    }
-
-
 class Agent(Model):
 
     _path = 'v1/agents'
@@ -179,9 +168,13 @@ class Trigger(ProcedureMixin, Model):
         self._session.post(url, json={'result': result})
         self.reload()
 
-    def fail(self, exception):
+    def fail(self, exc):
+        result = {
+            'error': ''.join(traceback.format_exception(
+                type(exc), exc, exc.__traceback__)),
+        }
+
         url = self.url / 'fail'
-        result = {'exception': json_exception(exception)}
         self._session.post(url, json={'result': result})
         self.reload()
 
@@ -201,17 +194,4 @@ class Trigger(ProcedureMixin, Model):
     def raise_on_error(self):
         if not self.is_error():
             return
-
-        parent_exception = None
-        exc_info = self.result.get('exception')
-
-        if exc_info:
-            # If the trigger failed because of an exception,
-            # emulate exception chaining.
-            parent_exception = Exception(
-                exc_info.get('type'),
-                exc_info.get('exception'),
-                exc_info.get('traceback'),
-            )
-
-        raise StormTriggerError(self.id, trigger=self) from parent_exception
+        raise StormTriggerError(self.id, trigger=self, details=self.result)

@@ -1,3 +1,6 @@
+import pprint
+
+
 class StormException(Exception):
     """Base class for all exceptions raised by stormlib."""
 
@@ -122,6 +125,16 @@ class StormMultipleObjectsReturned(StormException):
 class StormTriggerError(StormException):
     """Exception raised when the execution of a trigger fails."""
 
-    def __init__(self, *args, trigger=None, **kwargs):
+    def __init__(self, *args, trigger=None, details=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.trigger = trigger
+        if details is None:
+            details = getattr(self.trigger, 'result', None)
+        self.details = details
+
+    def __str__(self):
+        s = super().__str__()
+        if self.details is not None:
+            str_details = pprint.pformat(self.details)
+            s = '\n'.join((s, str_details))
+        return s
