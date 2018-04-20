@@ -11,6 +11,7 @@ import os
 import re
 import shlex
 import shutil
+import subprocess
 import sys
 
 import yaml
@@ -43,47 +44,145 @@ def yaml_dump(arg):
     return yaml.dump(arg, sys.stdout, default_flow_style=False)
 
 
-def supports_unicode(chars):
-    try:
-        chars.encode(sys.stdout.encoding)
-    except Exception:
-        return False
-    return True
+class Terminal:
 
+    COLORS = (
+        'BLACK', 'RED', 'GREEN', 'YELLOW', 'BLUE', 'MAGENTA', 'CYAN', 'WHITE')
 
-def supports_colors():
-    try:
-        if (hasattr(sys.stdout, 'isatty') and
-                hasattr(sys.stdout, 'fileno') and
-                sys.stdout.isatty()):
-            curses.setupterm(fd=sys.stdout.fileno())
-            if curses.tigetnum('colors') > 0:
-                return True
-    except Exception:
-        pass
-    return False
+    def __init__(self, size=None, colors=None, pager=None):
+        if size is None:
+            size = shutil.get_terminal_size((-1, -1))
+        self.size = size
 
+        if colors is None:
+            colors = self._supports_colors()
+        self.has_colors = colors
+        self.color_codes = self._color_codes()
 
-@contextlib.contextmanager
-def pager():
-    import subprocess
+        if pager is None:
+            pager = self._supports_pager()
+        self.has_pager = pager
 
-    args = shlex.split(os.environ.get('PAGER', 'less'))
-
-    env = os.environ.copy()
-    env['LESS'] = 'FRX'
-
-    with subprocess.Popen(
-            args, env=env, stdin=subprocess.PIPE,
-            stdout=sys.stdout, stderr=sys.stderr,
-            universal_newlines=True) as proc:
-        stdout = sys.stdout
-        sys.stdout = proc.stdin
-
+    def _supports_colors(self):
         try:
-            yield proc
-        finally:
-            sys.stdout = stdout
+            if (hasattr(sys.stdout, 'isatty') and
+                    hasattr(sys.stdout, 'fileno') and
+                    sys.stdout.isatty()):
+                curses.setupterm(fd=sys.stdout.fileno())
+                if curses.tigetnum('colors') > 0:
+                    return True
+        except Exception:
+            pass
+        return False
+
+    def _color_codes(self):
+        if not self.has_colors:
+            color_codes = {color: '' for color in self.COLORS}
+            color_codes['BOLD'] = color_codes['NORMAL'] = ''
+        else:
+            color_cap = (
+                curses.tigetstr('setaf') or
+                curses.tigetstr('setf') or
+                b'')
+
+            color_bytecodes = {
+                color: curses.tparm(color_cap, color_num)
+                for color_num, color in enumerate(self.COLORS)}
+
+            color_bytecodes['BOLD'] = curses.tigetstr('bold')
+            color_bytecodes['NORMAL'] = curses.tigetstr('sgr0')
+
+            color_codes = {
+                color: code.decode('ascii')
+                for color, code in color_bytecodes.items()}
+
+        return color_codes
+
+    def _supports_pager(self):
+        try:
+            return sys.stdout.isatty()
+        except Exception:
+            return False
+
+    def supports_chars(self, chars):
+        try:
+            chars.encode(sys.stdout.encoding)
+        except Exception:
+            return False
+        return True
+
+    def safestr(self, unicode_string, ascii_fallback):
+        # Ensure that the ascii_fallback is really an ASCII string
+        ascii_fallback.encode('ascii')
+
+        if self.supports_chars(unicode_string):
+            return unicode_string
+        else:
+            return ascii_fallback
+
+    @contextlib.contextmanager
+    def pager(self):
+        if not self.has_pager:
+            yield
+            return
+
+        args = shlex.split(os.environ.get('PAGER', 'less'))
+
+        env = os.environ.copy()
+        env.setdefault('LESS', 'FRX')
+
+        with subprocess.Popen(
+                args, env=env, stdin=subprocess.PIPE,
+                stdout=sys.stdout, stderr=sys.stderr,
+                universal_newlines=True) as proc:
+            orig_stdout = sys.stdout
+            sys.stdout = proc.stdin
+
+            try:
+                yield proc
+            finally:
+                sys.stdout = orig_stdout
+
+
+class ColoredString:
+
+    def __init__(self, s, color=None, bold=False):
+        self.s = str(s)
+        self.color = color
+        self.bold = bold
+
+    @classmethod
+    def _wrap_string(cls, s, color, bold):
+        color_codes = terminal.color_codes
+
+        return ''.join((
+            color_codes['BOLD'] if bold else '',
+            color_codes[color] if color is not None else '',
+            s,
+            color_codes['NORMAL'],
+        ))
+
+    def __str__(self):
+        return self._wrap_string(self.s, self.color, self.bold)
+
+    def __format__(self, format_spec):
+        s = format(self.s, format_spec)
+        return self._wrap_string(s, self.color, self.bold)
+
+    def __getitem__(self, index):
+        return self.__class__(self.s[index], self.color, self.bold)
+
+    def __add__(self, other):
+        if not isinstance(other, str):
+            return NotImplementedError
+        return self.__class__(self.s + other, self.color, self.bold)
+
+    def __len__(self):
+        return len(self.s)
+
+    def __repr__(self):
+        return '{}({!r}, color={!r}, bold={!r})'.format(
+            self.__class__.__name__, self.s, self.color, self.bold)
 
 
 def get_object_id(obj):
@@ -137,77 +236,6 @@ def get_object_health(obj):
     return ColoredString(health, health2color.get(health, 'YELLOW'))
 
 
-class ColoredString:
-
-    _color_codes_cache = None
-
-    COLORS = (
-        'BLACK', 'RED', 'GREEN', 'YELLOW', 'BLUE', 'MAGENTA', 'CYAN', 'WHITE')
-
-    def __init__(self, s, color=None, bold=False):
-        self.s = str(s)
-        self.color = color
-        self.bold = bold
-
-    @classmethod
-    def _get_color_codes(cls):
-        if cls._color_codes_cache is not None:
-            return cls._color_codes_cache
-
-        if not supports_colors():
-            color_codes = {key: '' for key in cls.COLORS}
-            color_codes['BOLD'] = ''
-            color_codes['NORMAL'] = ''
-        else:
-            color_cap = (
-                curses.tigetstr('setaf') or
-                curses.tigetstr('setf') or
-                b'')
-
-            color_codes = {
-                key: curses.tparm(color_cap, color_num).decode('ascii')
-                for color_num, key in enumerate(cls.COLORS)}
-
-            color_codes['BOLD'] = curses.tigetstr('bold').decode('ascii')
-            color_codes['NORMAL'] = curses.tigetstr('sgr0').decode('ascii')
-
-        cls._color_codes_cache = color_codes
-        return color_codes
-
-    @classmethod
-    def _wrap_string(cls, s, color, bold):
-        color_codes = cls._get_color_codes()
-
-        return ''.join((
-            color_codes['BOLD'] if bold else '',
-            color_codes[color] if color is not None else '',
-            s,
-            color_codes['NORMAL'],
-        ))
-
-    def __str__(self):
-        return self._wrap_string(self.s, self.color, self.bold)
-
-    def __format__(self, format_spec):
-        s = format(self.s, format_spec)
-        return self._wrap_string(s, self.color, self.bold)
-
-    def __getitem__(self, index):
-        return self.__class__(self.s[index], self.color, self.bold)
-
-    def __add__(self, other):
-        if not isinstance(other, str):
-            return NotImplementedError
-        return self.__class__(self.s + other, self.color, self.bold)
-
-    def __len__(self):
-        return len(self.s)
-
-    def __repr__(self):
-        return '{}({!r}, color={!r}, bold={!r})'.format(
-            self.__class__.__name__, self.s, self.color, self.bold)
-
-
 def print_table(cols, rows, truncate=None):
     cols = list(cols)
     rows = list(rows)
@@ -221,15 +249,13 @@ def print_table(cols, rows, truncate=None):
             columns_len[i] = max(columns_len[i], len(value))
 
     # Truncate a column if needed
-    if truncate is not None:
+    if truncate is not None and terminal.size.columns > 0:
         row_length = (
             sum(columns_len) + len(col_separator) * (len(cols) - 1))
-        term_length = shutil.get_terminal_size().columns
+        term_length = terminal.size.columns
 
         if row_length > term_length:
-            ellipsis = '…'
-            if not supports_unicode(ellipsis):
-                ellipsis = '...'
+            ellipsis = terminal.safestr('…', '...')
 
             i = cols.index(truncate)
             excess = row_length - term_length
@@ -248,69 +274,41 @@ def print_table(cols, rows, truncate=None):
     table = [[ColoredString(column, bold=True) for column in cols]]
     table += rows
 
-    with pager():
+    with terminal.pager():
         for row in table:
             print(row_format.format(*row))
 
 
-class TreeNode(collections.namedtuple('TreeNode', 'values children')):
+class TreeNode(collections.namedtuple('BaseTreeNode', 'values children')):
 
     def __new__(cls, values=(), children=()):
         return super().__new__(cls, list(values), list(children))
 
 
-class TreeFormatter:
+def format_tree_branch(node, indent='', last=False):
+    line = [''.join((
+        indent,
+        terminal.safestr('╰─', '`-') if last
+        else terminal.safestr('├─', '|-'),
+        node.values[0],
+    ))]
+    line += node.values[1:]
+    yield line
 
-    _symbols_cache = None
-
-    ASCII_SYMBOLS = ('`-', '|-', '  ', '| ')
-    UNICODE_SYMBOLS = ('╰─', '├─', '  ', '│ ')
-
-    def __init__(self, root_nodes):
-        self.root_nodes = root_nodes
-
-    @classmethod
-    def _symbols(cls):
-        if cls._symbols_cache is not None:
-            return cls._symbols_cache
-
-        if supports_unicode(''.join(cls.UNICODE_SYMBOLS)):
-            cls._symbols_cache = {
-                u: u for u in cls.UNICODE_SYMBOLS}
-        else:
-            cls._symbols_cache = {
-                u: a for u, a in zip(cls.UNICODE_SYMBOLS, cls.ASCII_SYMBOLS)}
-
-        return cls._symbols_cache
-
-    def format_branch(self, node, indent='', last=False):
-        symbols = self._symbols()
-
-        line = [''.join((
-            indent,
-            symbols['╰─'] if last else symbols['├─'],
-            node.values[0],
-        ))]
-        line += node.values[1:]
-        yield line
-
-        if node.children:
-            indent += symbols['  '] if last else symbols['│ ']
-            for c in node.children[:-1]:
-                yield from self.format_branch(c, indent)
-            yield from self.format_branch(node.children[-1], indent, True)
-
-    def format(self):
-        for n in self.root_nodes:
-            yield n.values
-            if n.children:
-                for c in n.children[:-1]:
-                    yield from self.format_branch(c)
-                yield from self.format_branch(n.children[-1], last=True)
+    if node.children:
+        indent += '  ' if last else terminal.safestr('│ ', '| ')
+        for c in node.children[:-1]:
+            yield from format_tree_branch(c, indent)
+        yield from format_tree_branch(node.children[-1], indent, True)
 
 
 def format_tree(nodes):
-    return TreeFormatter(nodes).format()
+    for n in nodes:
+        yield n.values
+        if n.children:
+            for c in n.children[:-1]:
+                yield from format_tree_branch(c)
+            yield from format_tree_branch(n.children[-1], last=True)
 
 
 class Command(metaclass=abc.ABCMeta):
@@ -780,6 +778,8 @@ class StormCtl(CommandLineClient):
             entity.add_arguments(entity_parser)
 
     def run(self):
+        global terminal
+        terminal = Terminal()
         command = self.options.command
         command(self)
 
