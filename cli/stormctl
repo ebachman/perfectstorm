@@ -7,6 +7,7 @@ import collections
 import curses
 import functools
 import re
+import shutil
 import sys
 
 import yaml
@@ -37,6 +38,27 @@ def yaml_load(arg):
 
 def yaml_dump(arg):
     return yaml.dump(arg, sys.stdout, default_flow_style=False)
+
+
+def supports_unicode(chars):
+    try:
+        chars.encode(sys.stdout.encoding)
+    except Exception:
+        return False
+    return True
+
+
+def supports_colors():
+    try:
+        if (hasattr(sys.stdout, 'isatty') and
+                hasattr(sys.stdout, 'fileno') and
+                sys.stdout.isatty()):
+            curses.setupterm(fd=sys.stdout.fileno())
+            if curses.tigetnum('colors') > 0:
+                return True
+    except Exception:
+        pass
+    return False
 
 
 def get_object_id(obj):
@@ -103,24 +125,11 @@ class ColoredString:
         self.bold = bold
 
     @classmethod
-    def _supports_colors(cls):
-        try:
-            if (hasattr(sys.stdout, 'isatty') and
-                    hasattr(sys.stdout, 'fileno') and
-                    sys.stdout.isatty()):
-                curses.setupterm(fd=sys.stdout.fileno())
-                if curses.tigetnum('colors') > 0:
-                    return True
-        except Exception:
-            pass
-        return False
-
-    @classmethod
     def _get_color_codes(cls):
         if cls._color_codes_cache is not None:
             return cls._color_codes_cache
 
-        if not cls._supports_colors():
+        if not supports_colors():
             color_codes = {key: '' for key in cls.COLORS}
             color_codes['BOLD'] = ''
             color_codes['NORMAL'] = ''
@@ -158,6 +167,14 @@ class ColoredString:
         s = format(self.s, format_spec)
         return self._wrap_string(s, self.color, self.bold)
 
+    def __getitem__(self, index):
+        return self.__class__(self.s[index], self.color, self.bold)
+
+    def __add__(self, other):
+        if not isinstance(other, str):
+            return NotImplementedError
+        return self.__class__(self.s + other, self.color, self.bold)
+
     def __len__(self):
         return len(self.s)
 
@@ -166,24 +183,45 @@ class ColoredString:
             self.__class__.__name__, self.s, self.color, self.bold)
 
 
-def print_table(cols, rows):
-    cols = [ColoredString(c, bold=True) for c in cols]
+def print_table(cols, rows, truncate=None):
+    cols = list(cols)
     rows = list(rows)
 
-    columns_len = {}
+    col_separator = '   '
 
-    for column in cols:
-        columns_len[column] = len(column)
-
+    # Compute the length of all the columns
+    columns_len = [len(column) for column in cols]
     for row in rows:
-        for column, value in zip(cols, row):
-            columns_len[column] = max(columns_len[column], len(value))
+        for i, value in enumerate(row):
+            columns_len[i] = max(columns_len[i], len(value))
 
-    row_format = '   '.join(
-        '{: <%d}' % columns_len[column]
-        for column in cols)
+    # Truncate a column if needed
+    if truncate is not None:
+        row_length = (
+            sum(columns_len) + len(col_separator) * (len(cols) - 1))
+        term_length = shutil.get_terminal_size().columns
 
-    table = [cols] + rows
+        if row_length > term_length:
+            ellipsis = '…'
+            if not supports_unicode(ellipsis):
+                ellipsis = '...'
+
+            i = cols.index(truncate)
+            excess = row_length - term_length
+
+            columns_len[i] = max(
+                len(truncate), len(ellipsis), columns_len[i] - excess)
+            new_len = columns_len[i] - len(ellipsis)
+
+            for row in rows:
+                row[i] = row[i][:new_len] + ellipsis
+
+    # Format and print the rows/columns
+    row_format = col_separator.join(
+        '{: <%d}' % size for size in columns_len)
+
+    table = [[ColoredString(column, bold=True) for column in cols]]
+    table += rows
 
     for row in table:
         print(row_format.format(*row))
@@ -206,19 +244,11 @@ class TreeFormatter:
         self.root_nodes = root_nodes
 
     @classmethod
-    def _supports_unicode(cls):
-        try:
-            ''.join(cls.UNICODE_SYMBOLS).encode(sys.stdout.encoding)
-        except Exception:
-            return False
-        return True
-
-    @classmethod
     def _symbols(cls):
         if cls._symbols_cache is not None:
             return cls._symbols_cache
 
-        if cls._supports_unicode():
+        if supports_unicode(''.join(cls.UNICODE_SYMBOLS)):
             cls._symbols_cache = {
                 u: u for u in cls.UNICODE_SYMBOLS}
         else:
@@ -318,9 +348,10 @@ class EntityListCommand(EntityCommand):
 
     command_name = 'ls'
 
-    def __init__(self, columns, **kwargs):
+    def __init__(self, columns, truncate=None, **kwargs):
         super().__init__(**kwargs)
         self.columns = columns
+        self.truncate = truncate
 
     def add_arguments(self, parser):
         super().add_arguments(parser)
@@ -344,7 +375,7 @@ class EntityListCommand(EntityCommand):
             [getter(obj) for column_name, getter in self.columns]
             for obj in queryset
         ]
-        print_table(header, rows)
+        print_table(header, rows, truncate=self.truncate)
 
 
 class EntityListTreeCommand(EntityListCommand):
@@ -370,7 +401,7 @@ class EntityListTreeCommand(EntityListCommand):
         header = [column_name for column_name, getter in self.columns]
         tree_nodes = self.create_tree(queryset)
         rows = format_tree(tree_nodes)
-        print_table(header, rows)
+        print_table(header, rows, truncate=self.truncate)
 
 
 class ResourceListCommand(EntityListTreeCommand):
@@ -383,7 +414,7 @@ class ResourceListCommand(EntityListTreeCommand):
             ('STATUS', get_object_status),
             ('HEALTH', get_object_health),
         ]
-        super().__init__(*args, columns=columns, **kwargs)
+        super().__init__(*args, columns=columns, truncate='NAMES', **kwargs)
 
 
 class ListGroupMembersCommand(ResourceListCommand, SingleEntityCommand):
