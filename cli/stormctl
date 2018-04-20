@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
+# -*- coding: utf8 -*-
 
 import abc
 import argparse
+import collections
 import curses
 import functools
 import re
@@ -187,6 +189,74 @@ def print_table(cols, rows):
         print(row_format.format(*row))
 
 
+class TreeNode(collections.namedtuple('TreeNode', 'values children')):
+
+    def __new__(cls, values=(), children=()):
+        return super().__new__(cls, list(values), list(children))
+
+
+class TreeFormatter:
+
+    _symbols_cache = None
+
+    ASCII_SYMBOLS = ('`-', '|-', '  ', '| ')
+    UNICODE_SYMBOLS = ('╰─', '├─', '  ', '│ ')
+
+    def __init__(self, root_nodes):
+        self.root_nodes = root_nodes
+
+    @classmethod
+    def _supports_unicode(cls):
+        try:
+            ''.join(cls.UNICODE_SYMBOLS).encode(sys.stdout.encoding)
+        except Exception:
+            return False
+        return True
+
+    @classmethod
+    def _symbols(cls):
+        if cls._symbols_cache is not None:
+            return cls._symbols_cache
+
+        if cls._supports_unicode():
+            cls._symbols_cache = {
+                u: u for u in cls.UNICODE_SYMBOLS}
+        else:
+            cls._symbols_cache = {
+                u: a for u, a in zip(cls.UNICODE_SYMBOLS, cls.ASCII_SYMBOLS)}
+
+        return cls._symbols_cache
+
+    def format_branch(self, node, indent='', last=False):
+        symbols = self._symbols()
+
+        line = [''.join((
+            indent,
+            symbols['╰─'] if last else symbols['├─'],
+            node.values[0],
+        ))]
+        line += node.values[1:]
+        yield line
+
+        if node.children:
+            indent += symbols['  '] if last else symbols['│ ']
+            for c in node.children[:-1]:
+                yield from self.format_branch(c, indent)
+            yield from self.format_branch(node.children[-1], indent, True)
+
+    def format(self):
+        for n in self.root_nodes:
+            yield n.values
+            if n.children:
+                for c in n.children[:-1]:
+                    yield from self.format_branch(c)
+                yield from self.format_branch(n.children[-1], last=True)
+
+
+def format_tree(nodes):
+    return TreeFormatter(nodes).format()
+
+
 class Command(metaclass=abc.ABCMeta):
 
     @property
@@ -277,7 +347,33 @@ class EntityListCommand(EntityCommand):
         print_table(header, rows)
 
 
-class ResourceListCommand(EntityListCommand):
+class EntityListTreeCommand(EntityListCommand):
+
+    def create_tree(self, queryset):
+        root_nodes = []
+        id2node = collections.defaultdict(TreeNode)
+
+        for obj in queryset:
+            node = id2node[obj.id]
+            node.values.extend(
+                getter(obj) for column_name, getter in self.columns)
+
+            if obj.parent is None:
+                root_nodes.append(node)
+            else:
+                parent_node = id2node[obj.parent]
+                parent_node.children.append(node)
+
+        return root_nodes
+
+    def list_verbose(self, queryset):
+        header = [column_name for column_name, getter in self.columns]
+        tree_nodes = self.create_tree(queryset)
+        rows = format_tree(tree_nodes)
+        print_table(header, rows)
+
+
+class ResourceListCommand(EntityListTreeCommand):
 
     def __init__(self, *args, **kwargs):
         columns = [
