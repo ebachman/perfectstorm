@@ -40,10 +40,6 @@ def yaml_load(arg):
     return yaml.safe_load(arg)
 
 
-def yaml_dump(arg):
-    return yaml.dump(arg, sys.stdout, default_flow_style=False)
-
-
 class Terminal:
 
     COLORS = (
@@ -153,6 +149,14 @@ class ColoredString:
 
     @classmethod
     def _wrap_string(cls, s, color, bold):
+        if '\n' in s:
+            # If the string contains multiple lines, color each line
+            # individually, otherwise the pager might color only the
+            # first line
+            return '\n'.join(
+                cls._wrap_string(line, color, bold)
+                for line in s.split('\n'))
+
         color_codes = terminal.color_codes
 
         return ''.join((
@@ -183,6 +187,40 @@ class ColoredString:
     def __repr__(self):
         return '{}({!r}, color={!r}, bold={!r})'.format(
             self.__class__.__name__, self.s, self.color, self.bold)
+
+
+def print_yaml(obj):
+    document = yaml.dump(obj, default_flow_style=False)
+
+    with terminal.pager():
+        if not terminal.has_colors:
+            sys.stdout.write(document)
+            return
+
+        last_token = None
+        last_token_end = None
+
+        for token in yaml.scan(document):
+            token_start = token.start_mark.index
+            token_end = token.end_mark.index
+
+            # Whitespace
+            sys.stdout.write(document[last_token_end:token_start])
+
+            # Token with formatting
+            if isinstance(token, yaml.ScalarToken):
+                if isinstance(last_token, yaml.KeyToken):
+                    color = 'BLUE'
+                else:
+                    color = 'RED'
+            else:
+                color = None
+
+            sys.stdout.write(str(ColoredString(
+                document[token_start:token_end], color=color)))
+
+            last_token = token
+            last_token_end = token_end
 
 
 def get_object_id(obj):
@@ -456,7 +494,7 @@ class EntityGetCommand(SingleEntityCommand):
 
     def __call__(self, client, model):
         obj = self.get_object(client, model)
-        yaml_dump(obj)
+        print_yaml(obj)
 
 
 class EntityRemoveCommand(MultipleEntitiesCommand):
