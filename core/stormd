@@ -167,6 +167,7 @@ class StormdApplication(BaseApplication):
         super().__init__()
 
     def load_config(self):
+        # Bind addresses
         bind = []
 
         for host, port in self.options.bind:
@@ -176,6 +177,10 @@ class StormdApplication(BaseApplication):
 
         self.cfg.set('bind', bind)
 
+        # Connection timeout
+        self.cfg.set('timeout', 0)
+
+        # Logging
         if self.options.debug:
             self.cfg.set('loglevel', 'DEBUG')
         self.cfg.set('logger_class', StormdLogger)
