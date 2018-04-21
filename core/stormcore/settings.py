@@ -111,7 +111,7 @@ REST_FRAMEWORK = {
     'UNAUTHENTICATED_USER': None,
     # Disable interpretation of '.json' in URLs. This causes problems
     # when resource IDs or names contain dots
-    #'FORMAT_SUFFIX_KWARG': None,
+    'FORMAT_SUFFIX_KWARG': None,
 }
 
 
