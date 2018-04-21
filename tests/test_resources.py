@@ -205,15 +205,15 @@ class TestRetrieval:
     def resources(self, agent):
         resources = []
 
-        for type_label in 'abc':
-            for num in '123':
+        for type_label in 'xyz':
+            for num in 'abc':
                 resource = Resource(
                     id='id-{}-{}'.format(type_label, num),
                     type='type-{}'.format(type_label),
                     names=[
-                        'name-{}-{}-1'.format(type_label, num),
-                        'name-{}-{}-2'.format(type_label, num),
-                        'name-{}-{}-3'.format(type_label, num),
+                        'name-{}-{}.1'.format(type_label, num),
+                        'name-{}-{}.2'.format(type_label, num),
+                        'name-{}-{}.3'.format(type_label, num),
                         'common-name',
                     ],
                     owner=agent.id,

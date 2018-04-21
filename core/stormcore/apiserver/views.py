@@ -138,6 +138,7 @@ class MultiLookupMixin:
     """Mixin that allows looking up objects using more than one field."""
 
     lookup_url_kwarg = 'id'
+    lookup_value_regex = '[^/]+'
 
     def get_object(self):
         value = self.kwargs[self.lookup_url_kwarg]

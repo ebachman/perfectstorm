@@ -105,9 +105,13 @@ STATIC_ROOT = os.path.join(BASE_DIR, 'static')
 # http://www.django-rest-framework.org/api-guide/settings/
 
 REST_FRAMEWORK = {
+    # Disable authentication
     'DEFAULT_AUTHENTICATION_CLASSES': [],
     'DEFAULT_PERMISSION_CLASSES': [],
     'UNAUTHENTICATED_USER': None,
+    # Disable interpretation of '.json' in URLs. This causes problems
+    # when resource IDs or names contain dots
+    #'FORMAT_SUFFIX_KWARG': None,
 }
 
 
