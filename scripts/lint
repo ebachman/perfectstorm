@@ -4,13 +4,7 @@ set -e
 
 cd "$(dirname "$(readlink -f "$0")")"/..
 
-flake8 \
-    cli \
-    cli/stormctl \
-    core \
-    core/stormd \
-    docs \
-    executors \
-    lib \
-    tests \
-    "$@"
+dirs="cli core docs executors lib tests"
+scripts="$(grep -rl '^#!/usr/bin/env python3' $dirs)"
+
+flake8 $dirs $scripts "$@"
