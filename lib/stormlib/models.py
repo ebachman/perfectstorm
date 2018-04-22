@@ -200,12 +200,22 @@ class Job(Model):
         self._session.post(url, json={'result': result})
         self.reload()
 
-    def wait(self, poll_interval=1, delete=True, raise_on_error=True):
-        while True:
-            self.reload()
-            if self.is_complete():
-                break
-            time.sleep(poll_interval)
+    def wait(self, delete=True, raise_on_error=True):
+        from . import events
+
+        event_filter = events.EventFilter([
+            events.EventMask(
+                event_type='updated', entity_type='job', entity_id=self.id),
+            events.EventMask(
+                event_type='deleted', entity_type='job', entity_id=self.id),
+        ])
+
+        with event_filter(events.stream()) as stream:
+            while True:
+                self.reload()
+                if self.is_complete():
+                    break
+                next(stream)
 
         if delete:
             self.delete()

@@ -167,3 +167,20 @@ class TestJobs:
         job.reload()
         assert job.owner == expected_owner
 
+    def test_wait(self, agent, procedure, resource):
+        def handle_job():
+            with job.handle(owner=agent.id):
+                # Pretend to do some work
+                time.sleep(2)
+
+        job = procedure.exec(target=resource.id)
+
+        process = Process(target=handle_job)
+        process.start()
+
+        try:
+            job.wait()
+        finally:
+            process.join()
+
+        assert job.is_complete()
