@@ -27,7 +27,7 @@ def swarm_cluster():
 
 
 @pytest.fixture(scope='session')
-def swarm_service(swarm_cluster):
+def swarm_service(request, swarm_cluster):
     from stormlib import Resource, Trigger
 
     service_name = random_name()
@@ -43,6 +43,9 @@ def swarm_service(swarm_cluster):
     trigger.wait()
 
     yield Resource.objects.get(service_name)
+
+    if request.config.getoption('--no-cleanup'):
+        return
 
     trigger = Trigger(
         type='swarm',
