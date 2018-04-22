@@ -293,6 +293,37 @@ class SwarmTaskProbe(SwarmMixin, DiscoveryProbe):
         )
 
 
+class SwarmNodeProbe(SwarmMixin, DiscoveryProbe):
+
+    resource_type = 'swarm-node'
+
+    def get_snapshots(self):
+        return self.swarm.get_json('nodes')
+
+    def get_internal_id(self, data):
+        return data['ID']
+
+    def get_node_status(self, data):
+        docker2storm_status = {
+            'disconnected': 'stopped',
+            'down': 'stopped',
+            'ready': 'running',
+        }
+
+        return docker2storm_status.get(data['Status']['State'], 'unknown')
+
+    def model_resource(self, data):
+        return Resource(
+            parent=self.swarm.cluster_id,
+            names=[
+                data['Description']['Hostname'],
+                data['ID'],
+            ],
+            status=self.get_node_status(data),
+            health='healthy',
+        )
+
+
 class SwarmDiscoveryExecutor(SwarmMixin, DiscoveryExecutor):
 
     def get_probes(self):
@@ -300,6 +331,7 @@ class SwarmDiscoveryExecutor(SwarmMixin, DiscoveryExecutor):
             SwarmClusterProbe(self.swarm),
             SwarmServiceProbe(self.swarm),
             SwarmTaskProbe(self, self.swarm),
+            SwarmNodeProbe(self.swarm),
         ]
 
 
