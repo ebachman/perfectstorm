@@ -1,4 +1,3 @@
-import json
 import random
 
 import pytest
@@ -28,18 +27,21 @@ def swarm_cluster():
 
 @pytest.fixture(scope='session')
 def swarm_service(request, swarm_cluster):
-    from stormlib import Resource, Job
+    from stormlib import Resource, Procedure
 
     service_name = random_name()
 
-    job = Job(
+    create_procedure = Procedure(
         type='swarm',
-        target=swarm_cluster.id,
-        content=json.dumps([
-            'service create --name {} nginx:latest'.format(service_name)
-        ]),
+        content={
+            'run': [
+                'service create --name {} nginx:latest'.format(service_name),
+            ],
+        },
     )
-    job.save()
+    create_procedure.save()
+
+    job = create_procedure.exec(target=swarm_cluster.id)
     job.wait()
 
     yield Resource.objects.get(service_name)
@@ -47,12 +49,18 @@ def swarm_service(request, swarm_cluster):
     if request.config.getoption('--no-cleanup'):
         return
 
-    job = Job(
+    rm_procedure = Procedure(
         type='swarm',
-        target=swarm_cluster.id,
-        content=json.dumps([
-            'service rm {}'.format(service_name)
-        ]),
+        content={
+            'run': [
+                'service rm {}'.format(service_name),
+            ],
+        },
     )
-    job.save()
+    rm_procedure.save()
+
+    job = rm_procedure.exec(target=swarm_cluster.id)
     job.wait()
+
+    create_procedure.delete()
+    rm_procedure.delete()

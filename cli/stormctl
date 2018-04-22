@@ -695,6 +695,48 @@ class GroupHandler(EntityHandler):
     importer = EntityImporter()
 
 
+class ProcedureExecCommand(SingleEntityCommand):
+
+    command_name = 'exec'
+
+    def add_arguments(self, parser):
+        super().add_arguments(parser)
+
+        parser.add_argument('-d', '--detach', action='store_true')
+        parser.add_argument('-k', '--keep', action='store_true')
+
+        parser.add_argument('-t', '--target')
+
+        parser.add_argument(
+            '-o', '--option', dest='options',
+            type=self._parse_job_arg, action='append', default=[])
+        parser.add_argument(
+            '-p', '--param', dest='params',
+            type=self._parse_job_arg, action='append', default=[])
+
+    def _parse_job_arg(self, arg):
+        parts = arg.split('=', 1)
+        if len(parts) == 1:
+            key = arg
+            value = True
+        else:
+            key, value = parts
+            value = yaml_load(value)
+        return key, value
+
+    def __call__(self, client, model):
+        procedure = self.get_object(client, model)
+
+        job = procedure.exec(
+            target=client.options.target,
+            options=dict(client.options.options),
+            params=dict(client.options.params),
+        )
+
+        if not client.options.detach:
+            job.wait(delete=not client.options.keep)
+
+
 class ProcedureHandler(EntityHandler):
 
     model = Procedure
@@ -708,6 +750,7 @@ class ProcedureHandler(EntityHandler):
         ]),
         EntityGetCommand(),
         EntityRemoveCommand(),
+        ProcedureExecCommand(),
     ]
 
     importer = EntityImporter()
@@ -724,50 +767,6 @@ class ResourceHandler(EntityHandler):
     ]
 
 
-class ProcedureExecCommand(EntityCommand):
-
-    command_name = 'exec'
-
-    def add_arguments(self, parser):
-        super().add_arguments(parser)
-        parser.add_argument('-d', '--detach', action='store_true')
-        parser.add_argument('-k', '--keep', action='store_true')
-
-        parser.add_argument(
-            '-o', '--option', dest='options',
-            type=self._parse_job_arg, action='append', default=[])
-        parser.add_argument(
-            '-x', '--param', dest='params',
-            type=self._parse_job_arg, action='append', default=[])
-        parser.add_argument('-t', '--target')
-
-        procedure_group = parser.add_mutually_exclusive_group(required=True)
-        procedure_group.add_argument('-p', '--procedure')
-        procedure_group.add_argument('-c', '--content')
-
-    def _parse_job_arg(self, arg):
-        parts = arg.split('=', 1)
-        if len(parts) == 1:
-            key = arg
-            value = True
-        else:
-            key, value = parts
-            value = yaml_load(value)
-        return key, value
-
-    def __call__(self, client, model):
-        obj = model(
-            procedure=client.options.procedure,
-            content=client.options.content,
-            options=dict(client.options.options),
-            params=dict(client.options.params),
-            target=client.options.target)
-        obj.save()
-
-        if not client.options.detach:
-            obj.wait(delete=not client.options.keep)
-
-
 class JobHandler(EntityHandler):
 
     model = Job
@@ -781,7 +780,6 @@ class JobHandler(EntityHandler):
         ]),
         EntityGetCommand(),
         EntityRemoveCommand(),
-        ProcedureExecCommand(),
     ]
 
 

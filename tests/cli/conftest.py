@@ -25,3 +25,17 @@ def examples_path():
         return examples_path
 
     pytest.skip('examples directiory not found')
+
+
+# Fixtures borrowed from tests.swarm
+
+@pytest.fixture(scope='session')
+def skip_without_swarm(request, api_session):
+    from ..swarm.conftest import skip_without_swarm
+    skip_without_swarm(request, api_session)
+
+
+@pytest.fixture(scope='session')
+def swarm_cluster(skip_without_swarm):
+    from ..swarm.conftest import swarm_cluster
+    return swarm_cluster()

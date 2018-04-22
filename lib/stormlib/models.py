@@ -98,20 +98,28 @@ class Application(Model):
     expose = ListField(DictField())
 
 
-class ProcedureMixin(Model):
-
-    content = StringField(null=True)
-    options = DictField()
-    params = DictField()
-    target = StringField(null=True)
-
-
-class Procedure(ProcedureMixin, Model):
+class Procedure(Model):
 
     _path = 'v1/procedures'
 
     type = StringField()
     name = StringField(null=True)
+
+    content = DictField()
+    options = DictField()
+    params = DictField()
+
+    def exec(self, target, options=None, params=None):
+        job = Job(
+            target=target,
+            procedure=self.id,
+            options=options,
+            params=params,
+        )
+
+        job.save()
+
+        return job
 
 
 class JobHandler:
@@ -132,15 +140,18 @@ class JobHandler:
             self.job.fail(exc_value)
 
 
-class Job(ProcedureMixin, Model):
+class Job(Model):
 
     _path = 'v1/jobs'
 
-    type = StringField(null=True)
-    owner = StringField(read_only=True)
-    status = StringField(read_only=True)
+    owner = StringField(null=True, read_only=True)
 
+    target = StringField(null=True)
     procedure = StringField(null=True)
+    options = DictField()
+    params = DictField()
+
+    status = StringField(read_only=True)
     result = DictField()
 
     created = StringField(null=True)
@@ -154,12 +165,21 @@ class Job(ProcedureMixin, Model):
     def is_complete(self):
         return self.status in ('done', 'error')
 
-    def is_error(self):
-        return self.status == 'error'
+    def get_procedure(self):
+        procedure = Procedure.objects.get(self.procedure)
+
+        if self.options or self.params:
+            procedure = Procedure(
+                content=procedure.content,
+                options={**procedure.options, **self.options},
+                params={**procedure.params, **self.params},
+            )
+
+        return procedure
 
     def handle(self, owner):
         url = self.url / 'handle'
-        self._session.post(url, json={'owner': owner.id})
+        self._session.post(url, json={'owner': owner})
         self.reload()
         return JobHandler(self)
 
@@ -194,6 +214,5 @@ class Job(ProcedureMixin, Model):
             self.raise_on_error()
 
     def raise_on_error(self):
-        if not self.is_error():
-            return
-        raise StormJobError(self.id, job=self, details=self.result)
+        if self.status == 'error':
+            raise StormJobError(self.id, job=self, details=self.result)

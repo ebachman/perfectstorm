@@ -10,8 +10,6 @@ import re  # noqa: E402
 import shlex  # noqa: E402
 import subprocess  # noqa: E402
 
-import yaml  # noqa: E402
-
 import requests  # noqa: E402
 
 from stormlib import Agent, Resource  # noqa: E402
@@ -138,10 +136,10 @@ class SwarmProcedureRunner(SwarmMixin, ProcedureRunner):
     def prepare(self):
         super().prepare()
 
-        commands = yaml.safe_load(self.job.content)
+        commands = self.procedure.content.get('run', [])
         if not isinstance(commands, list):
             raise StormValidationError(
-                'Procedure content is expected to be a list of commands')
+                'run is expected to be a list of commands')
 
         self.commands = [
             DockerCommand(self.swarm, item) for item in commands]

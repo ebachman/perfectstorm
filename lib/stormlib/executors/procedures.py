@@ -13,7 +13,7 @@ class ProcedureRunner:
     def __call__(self):
         self.prepare()
 
-        with self.job.handle(self.agent):
+        with self.job.handle(self.agent.id):
             try:
                 result = self.run()
             except Exception as exc:
@@ -22,15 +22,7 @@ class ProcedureRunner:
                 self.complete(result)
 
     def prepare(self):
-        job = self.job
-
-        if job.procedure is None:
-            return
-
-        procedure = Procedure.objects.get(job.procedure)
-
-        job.options = {**procedure.options, **job.options}
-        job.params = {**procedure.params, **job.params}
+        self.procedure = self.job.get_procedure()
 
     @abc.abstractmethod
     def run(self):

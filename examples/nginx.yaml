@@ -13,17 +13,19 @@
 - procedure:
     name: nginx-create
     type: swarm
-    content: |
-      - service create
-        --name nginx
-        --mode global
-        --publish 80:80
-        --health-cmd 'nginx -t'
-        --health-interval 5s
-        nginx
+    content:
+      run:
+        - service create
+          --name nginx
+          --mode global
+          --publish 80:80
+          --health-cmd 'nginx -t'
+          --health-interval 5s
+          nginx
 
 - procedure:
     name: nginx-destroy
     type: swarm
-    content: |
-      - service rm nginx
+    content:
+      run:
+        - service rm nginx

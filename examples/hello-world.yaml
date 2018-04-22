@@ -13,5 +13,6 @@
 - procedure:
     name: hello-world
     type: swarm
-    content: |
-      - service create --name hello-world hello-world
+    content:
+      run:
+        - service create --name hello-world hello-world

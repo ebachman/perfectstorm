@@ -211,37 +211,40 @@ class ApplicationSerializer(DocumentSerializer):
 
 class ProcedureSerializer(DocumentSerializer):
 
+    name = CharField(
+        allow_blank=False, allow_null=True, required=False,
+        validators=[UniqueValidator(Procedure.objects.all())])
+
+    content = EscapedDictField()
     options = EscapedDictField()
     params = EscapedDictField()
-    target = StormReferenceField(Resource, allow_null=True, required=False)
 
     class Meta:
         model = Procedure
-        fields = ('id', 'type', 'name', 'content', 'options', 'params', 'target')
-        read_only_fields = ('id',)
+        fields = ('id', 'type', 'name', 'content', 'options', 'params')
 
 
 class BaseJobSerializer(DocumentSerializer):
 
-    procedure = StormReferenceField(Procedure, allow_null=True, required=False)
+    target = StormReferenceField(Resource)
+    procedure = StormReferenceField(Procedure)
 
     options = EscapedDictField()
     params = EscapedDictField()
     result = EscapedDictField()
-    target = StormReferenceField(Resource, allow_null=True, required=False)
 
     class Meta:
         model = Job
         fields = (
-            'id', 'type', 'owner', 'status', 'procedure', 'content',
-            'options', 'params', 'result', 'target', 'created',
+            'id', 'owner', 'target', 'procedure', 'options', 'params',
+            'status', 'result', 'created',
         )
 
 
 class JobCreateSerializer(BaseJobSerializer):
 
     class Meta(BaseJobSerializer.Meta):
-        read_only_fields = ('id', 'owner', 'status', 'created')
+        read_only_fields = ('id', 'owner', 'status', 'result', 'created')
 
 
 class JobSerializer(BaseJobSerializer):

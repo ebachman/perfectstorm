@@ -1,4 +1,7 @@
 import subprocess
+from subprocess import CalledProcessError
+
+import pytest
 
 
 def stormctl(*args):
@@ -10,6 +13,11 @@ def stormctl(*args):
         stdout=subprocess.PIPE,
         universal_newlines=True,
     )
+
+
+@pytest.fixture(scope='session')
+def nginx_example(examples_path):
+    stormctl('import', '-f', examples_path / 'nginx.yaml')
 
 
 def test_resource_ls(random_resources):
@@ -39,3 +47,25 @@ def test_resource_ls(random_resources):
 
 def test_import(examples_path):
     stormctl('import', '-f', examples_path / 'hello-world.yaml')
+
+
+def test_procedures(nginx_example, swarm_cluster):
+    # Check that the 'nginx-create' and 'nginx-destroy' procedures
+    # got imported
+    stormctl('procedure', 'get', 'nginx-create')
+    stormctl('procedure', 'get', 'nginx-destroy')
+
+    # Check that the 'nginx' service is not available
+    with pytest.raises(CalledProcessError):
+        stormctl('resource', 'get', 'nginx')
+
+    # Run the 'nginx-create' procedure and check that the 'nginx' service
+    # is running
+    stormctl('procedure', 'exec', 'nginx-create', '-t', swarm_cluster.id)
+    stormctl('resource', 'get', 'nginx')
+
+    # Run the 'nginx-destroy' procedure and check that the 'nginx' service
+    # is gone
+    stormctl('procedure', 'exec', 'nginx-destroy', '-t', swarm_cluster.id)
+    with pytest.raises(CalledProcessError):
+        stormctl('resource', 'get', 'nginx')

@@ -496,24 +496,18 @@ class Application(NameMixin, StormDocument):
     }
 
 
-class ProcedureMixin:
+class Procedure(NameMixin, TypeMixin, StormDocument):
 
-    content = StringField(null=True)
+    content = EscapedDictField()
     options = EscapedDictField()
     params = EscapedDictField()
-    target = StormReferenceField(Resource, null=True)
-
-
-class Procedure(NameMixin, TypeMixin, ProcedureMixin, StormDocument):
-
-    content = StringField(required=True)
 
     meta = {
         'id_prefix': 'prc-',
     }
 
 
-class Job(TypeMixin, ProcedureMixin, StormDocument):
+class Job(StormDocument):
 
     STATUS_CHOICES = (
         ('pending', 'Pending'),
@@ -523,10 +517,14 @@ class Job(TypeMixin, ProcedureMixin, StormDocument):
     )
 
     owner = StormReferenceField(Agent, null=True)
-    status = StringField(choices=STATUS_CHOICES, default='pending', required=True)
 
-    type = StringField(min_length=1, null=True)
-    procedure = StormReferenceField(Procedure, null=True)
+    target = StormReferenceField(Resource)
+    procedure = StormReferenceField(Procedure)
+    options = EscapedDictField()
+    params = EscapedDictField()
+
+    status = StringField(
+        choices=STATUS_CHOICES, default='pending', required=True)
     result = EscapedDictField(required=True)
 
     created = DateTimeField(default=datetime.now, required=True)
@@ -539,21 +537,6 @@ class Job(TypeMixin, ProcedureMixin, StormDocument):
         ],
         'ordering': ['created'],
     }
-
-    def clean(self):
-        super().clean()
-
-        if not self.target:
-            if not self.procedure or not self.procedure.target:
-                raise ValidationError('No target specified')
-            self.target = self.procedure.target
-
-        if not self.content:
-            if not self.procedure:
-                raise ValidationError('No content and no procedure specified')
-
-        if self.status not in ('done', 'error'):
-            self.result = {}
 
     def __str__(self):
         return str(self.pk)

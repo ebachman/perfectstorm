@@ -23,7 +23,7 @@ def api_session(request):
 
 @pytest.fixture(scope='session', autouse=True)
 def cleanup(request):
-    from stormlib import Agent, Application, Group, Procedure
+    from stormlib import Agent, Application, Group, Procedure, Job
 
     yield
 
@@ -36,6 +36,7 @@ def cleanup(request):
     delete.extend(Group.objects.all())
     delete.extend(Application.objects.all())
     delete.extend(Procedure.objects.all())
+    delete.extend(Job.objects.all())
     # No need to delete resources: they will be deleted
     # automatically when deleting the agents
 
@@ -47,7 +48,11 @@ def cleanup(request):
 def agent(request):
     from .samples import create_agent
     agent = create_agent()
+
     yield agent
+
+    if request.config.getoption('--no-cleanup'):
+        return
     agent.delete()
 
 
@@ -55,3 +60,14 @@ def agent(request):
 def random_resources():
     from .samples import create_random_resources
     return create_random_resources()
+
+
+@pytest.fixture()
+def resource(agent):
+    from .samples import create_random_resources
+    lst = create_random_resources(
+        count=1,
+        min_running_percent=0,
+        min_healthy_percent=0,
+    )
+    return lst[0]
