@@ -2,7 +2,7 @@ import time
 import traceback
 
 from .base import Model, Collection
-from .exceptions import StormTriggerError
+from .exceptions import StormJobError
 from .fields import StringField, ListField, DictField
 from .heartbeat import Heartbeat
 
@@ -11,9 +11,9 @@ __all__ = [
     'Agent',
     'Application',
     'Group',
+    'Job',
     'Procedure',
     'Resource',
-    'Trigger',
 ]
 
 
@@ -114,27 +114,27 @@ class Procedure(ProcedureMixin, Model):
     name = StringField(null=True)
 
 
-class TriggerHandler:
+class JobHandler:
 
-    def __init__(self, trigger):
-        self.trigger = trigger
+    def __init__(self, job):
+        self.job = job
 
     def __enter__(self):
-        return self.trigger
+        return self.job
 
     def __exit__(self, exc_type, exc_value, exc_tb):
-        if self.trigger.is_complete():
+        if self.job.is_complete():
             return
 
         if exc_value is None:
-            self.trigger.complete()
+            self.job.complete()
         else:
-            self.trigger.fail(exc_value)
+            self.job.fail(exc_value)
 
 
-class Trigger(ProcedureMixin, Model):
+class Job(ProcedureMixin, Model):
 
-    _path = 'v1/triggers'
+    _path = 'v1/jobs'
 
     type = StringField(null=True)
     owner = StringField(read_only=True)
@@ -157,11 +157,11 @@ class Trigger(ProcedureMixin, Model):
     def is_error(self):
         return self.status == 'error'
 
-    def handle(self, agent):
+    def handle(self, owner):
         url = self.url / 'handle'
-        self._session.post(url, json={'agent': agent.id})
+        self._session.post(url, json={'owner': owner.id})
         self.reload()
-        return TriggerHandler(self)
+        return JobHandler(self)
 
     def complete(self, result=None, status='done'):
         if result is None:
@@ -196,4 +196,4 @@ class Trigger(ProcedureMixin, Model):
     def raise_on_error(self):
         if not self.is_error():
             return
-        raise StormTriggerError(self.id, trigger=self, details=self.result)
+        raise StormJobError(self.id, job=self, details=self.result)

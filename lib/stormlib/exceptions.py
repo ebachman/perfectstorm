@@ -115,14 +115,14 @@ class StormMultipleObjectsReturned(StormException):
     """
 
 
-class StormTriggerError(StormException):
-    """Exception raised when the execution of a trigger fails."""
+class StormJobError(StormException):
+    """Exception raised when the execution of a job fails."""
 
-    def __init__(self, *args, trigger=None, details=None, **kwargs):
+    def __init__(self, *args, job=None, details=None, **kwargs):
         super().__init__(*args, **kwargs)
-        self.trigger = trigger
+        self.job = job
         if details is None:
-            details = getattr(self.trigger, 'result', None)
+            details = getattr(self.job, 'result', None)
         self.details = details
 
     def __str__(self):

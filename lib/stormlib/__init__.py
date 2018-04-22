@@ -5,9 +5,9 @@ from .models import (
     Application,
     Collection,
     Group,
+    Job,
     Procedure,
     Resource,
-    Trigger,
 )
 from .session import connect
 
@@ -17,9 +17,9 @@ __all__ = [
     'Application',
     'Collection',
     'Group',
+    'Job',
     'Procedure',
     'Resource',
-    'Trigger',
     'connect',
 ]
 

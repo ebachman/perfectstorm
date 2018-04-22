@@ -22,25 +22,25 @@ from stormcore.apiserver.models import (
     Application,
     Event,
     Group,
+    Job,
     Procedure,
     Resource,
     StormReferenceField,
-    Trigger,
     cleanup_expired_agents,
 )
 
 from stormcore.apiserver.serializers import (
     AgentSerializer,
     ApplicationSerializer,
-    CreateTriggerSerializer,
     EventSerializer,
     GroupAddRemoveMembersSerializer,
     GroupSerializer,
+    JobCompleteSerializer,
+    JobCreateSerializer,
+    JobHandleSerializer,
+    JobSerializer,
     ProcedureSerializer,
     ResourceSerializer,
-    TriggerCompleteSerializer,
-    TriggerHandleSerializer,
-    TriggerSerializer,
 )
 
 
@@ -227,49 +227,50 @@ class ProcedureViewSet(StormViewSet):
     serializer_class = ProcedureSerializer
 
 
-class TriggerViewSet(StormViewSet):
+class JobViewSet(StormViewSet):
 
-    queryset = Trigger.objects.all()
+    queryset = Job.objects.all()
 
     def get_serializer_class(self):
         if self.action == 'create':
-            return CreateTriggerSerializer
+            return JobCreateSerializer
         else:
-            return TriggerSerializer
+            return JobSerializer
 
     @detail_route(methods=['POST'])
     def handle(self, request, **kwargs):
-        trigger = self.get_object()
+        job = self.get_object()
 
-        serializer = TriggerHandleSerializer(data=request.data)
+        serializer = JobHandleSerializer(data=request.data)
         if not serializer.is_valid():
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-        agent = serializer.validated_data['agent']
+            return Response(
+                serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        owner = serializer.validated_data['owner']
 
-        # Atomically transition the status from 'pending' to 'running', setting the
-        # owner at the same time
-        qs = Trigger.objects.filter(id=trigger.id, status='pending')
-        qs.update(set__status='running', set__owner=agent.id)
+        # Atomically transition the status from 'pending' to 'running', setting
+        # the owner at the same time
+        qs = Job.objects.filter(id=job.id, status='pending')
+        qs.update(set__status='running', set__owner=owner.id)
 
-        # Check the status of the trigger. Because we used an atomic operation, the
-        # scenarios are three:
+        # Check the status of the job. Because we used an atomic operation,
+        # the scenarios are three:
         #
-        # 1. the trigger was not in 'pending' status, and the trigger was left
+        # 1. the job was not in 'pending' status, and the job was left
         #    unchanged;
-        # 2. the trigger was in 'pending' status but some other agent handled it
-        #    before us: in this case the trigger will now be in status 'running'
+        # 2. the job was in 'pending' status but some other agent handled it
+        #    before us: in this case the job will now be in status 'running'
         #    but the owner will be different from what we expect;
-        # 3. the trigger was in 'pending' status and nobody else other than us
+        # 3. the job was in 'pending' status and nobody else other than us
         #    touched it: the update suceeded.
         #
         # Case 3 is what we're interested in; all other cases are errors
 
-        trigger.reload()
+        job.reload()
 
-        if trigger.status != 'running' or trigger.owner.id != agent.id:
+        if job.status != 'running' or job.owner.id != owner.id:
             # Case 1 or 2, error
             return Response(
-                {'status': ["Trigger is not in 'pending' state"]},
+                {'status': ["Job is not in 'pending' state"]},
                 status=status.HTTP_409_CONFLICT)
 
         # Case 3, success
@@ -277,43 +278,30 @@ class TriggerViewSet(StormViewSet):
 
     @detail_route(methods=['POST'])
     def complete(self, request, **kwargs):
-        trigger = self.get_object()
-
-        serializer = TriggerCompleteSerializer(data=request.data)
-        if not serializer.is_valid():
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-        result = serializer.validated_data['result']
-
-        if trigger.status != 'running':
-            return Response(
-                {'status': ["Trigger is not in 'running' state"]},
-                status=status.HTTP_409_CONFLICT)
-
-        trigger.owner = None
-        trigger.status = 'done'
-        trigger.result = result
-        trigger.save()
-
-        return Response(status=status.HTTP_204_NO_CONTENT)
+        return self._complete(request, 'done')
 
     @detail_route(methods=['POST'])
     def fail(self, request, **kwargs):
-        trigger = self.get_object()
+        return self._complete(request, 'error')
 
-        serializer = TriggerCompleteSerializer(data=request.data)
+    def _complete(self, request, final_status):
+        job = self.get_object()
+
+        serializer = JobCompleteSerializer(data=request.data)
         if not serializer.is_valid():
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         result = serializer.validated_data['result']
 
-        if trigger.status != 'running':
+        if job.status != 'running':
             return Response(
-                {'status': ["Trigger is not in 'running' state"]},
+                {'status': ["Job is not in 'running' state"]},
                 status=status.HTTP_409_CONFLICT)
 
-        trigger.owner = None
-        trigger.status = 'error'
-        trigger.result = result
-        trigger.save()
+        job.owner = None
+        job.status = final_status
+        job.result = result
+        job.save()
 
         return Response(status=status.HTTP_204_NO_CONTENT)
 

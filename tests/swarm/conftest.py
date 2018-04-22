@@ -28,31 +28,31 @@ def swarm_cluster():
 
 @pytest.fixture(scope='session')
 def swarm_service(request, swarm_cluster):
-    from stormlib import Resource, Trigger
+    from stormlib import Resource, Job
 
     service_name = random_name()
 
-    trigger = Trigger(
+    job = Job(
         type='swarm',
         target=swarm_cluster.id,
         content=json.dumps([
             'service create --name {} nginx:latest'.format(service_name)
         ]),
     )
-    trigger.save()
-    trigger.wait()
+    job.save()
+    job.wait()
 
     yield Resource.objects.get(service_name)
 
     if request.config.getoption('--no-cleanup'):
         return
 
-    trigger = Trigger(
+    job = Job(
         type='swarm',
         target=swarm_cluster.id,
         content=json.dumps([
             'service rm {}'.format(service_name)
         ]),
     )
-    trigger.save()
-    trigger.wait()
+    job.save()
+    job.wait()

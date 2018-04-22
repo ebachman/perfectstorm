@@ -20,9 +20,9 @@ from stormlib import (
     Agent,
     Application,
     Group,
+    Job,
     Procedure,
     Resource,
-    Trigger,
 )
 from stormlib.base import Model
 from stormlib.cli import CommandLineClient
@@ -724,9 +724,9 @@ class ResourceHandler(EntityHandler):
     ]
 
 
-class TriggerRunCommand(EntityCommand):
+class ProcedureExecCommand(EntityCommand):
 
-    command_name = 'run'
+    command_name = 'exec'
 
     def add_arguments(self, parser):
         super().add_arguments(parser)
@@ -735,17 +735,17 @@ class TriggerRunCommand(EntityCommand):
 
         parser.add_argument(
             '-o', '--option', dest='options',
-            type=self._parse_trigger_arg, action='append', default=[])
+            type=self._parse_job_arg, action='append', default=[])
         parser.add_argument(
             '-x', '--param', dest='params',
-            type=self._parse_trigger_arg, action='append', default=[])
+            type=self._parse_job_arg, action='append', default=[])
         parser.add_argument('-t', '--target')
 
         procedure_group = parser.add_mutually_exclusive_group(required=True)
         procedure_group.add_argument('-p', '--procedure')
         procedure_group.add_argument('-c', '--content')
 
-    def _parse_trigger_arg(self, arg):
+    def _parse_job_arg(self, arg):
         parts = arg.split('=', 1)
         if len(parts) == 1:
             key = arg
@@ -768,10 +768,10 @@ class TriggerRunCommand(EntityCommand):
             obj.wait(delete=not client.options.keep)
 
 
-class TriggerHandler(EntityHandler):
+class JobHandler(EntityHandler):
 
-    model = Trigger
-    entity_name = 'trigger'
+    model = Job
+    entity_name = 'job'
 
     commands = [
         EntityListCommand([
@@ -781,7 +781,7 @@ class TriggerHandler(EntityHandler):
         ]),
         EntityGetCommand(),
         EntityRemoveCommand(),
-        TriggerRunCommand(),
+        ProcedureExecCommand(),
     ]
 
 
@@ -797,7 +797,7 @@ class StormCtl(CommandLineClient):
         GroupHandler(),
         ProcedureHandler(),
         ResourceHandler(),
-        TriggerHandler(),
+        JobHandler(),
     ]
 
     def add_arguments(self, parser):

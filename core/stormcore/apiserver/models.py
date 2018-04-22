@@ -155,10 +155,9 @@ def cleanup_owned_documents(deleted_agent_ids):
         owner__in=deleted_agent_ids)
     orphaned_resources.delete()
 
-    orphaned_triggers = Trigger.objects.filter(
+    orphaned_jobs = Job.objects.filter(
         owner__in=deleted_agent_ids)
-    orphaned_triggers.filter(status='running').update(status='pending')
-    orphaned_triggers.update(owner=None)
+    orphaned_jobs.update(status='pending', owner=None)
 
 
 class StormIdField(StringField):
@@ -514,7 +513,7 @@ class Procedure(NameMixin, TypeMixin, ProcedureMixin, StormDocument):
     }
 
 
-class Trigger(TypeMixin, ProcedureMixin, StormDocument):
+class Job(TypeMixin, ProcedureMixin, StormDocument):
 
     STATUS_CHOICES = (
         ('pending', 'Pending'),
@@ -533,7 +532,7 @@ class Trigger(TypeMixin, ProcedureMixin, StormDocument):
     created = DateTimeField(default=datetime.now, required=True)
 
     meta = {
-        'id_prefix': 'trg-',
+        'id_prefix': 'job-',
         'indexes': [
             'created',
             'owner',

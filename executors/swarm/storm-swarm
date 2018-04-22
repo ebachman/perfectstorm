@@ -138,7 +138,7 @@ class SwarmProcedureRunner(SwarmMixin, ProcedureRunner):
     def prepare(self):
         super().prepare()
 
-        commands = yaml.safe_load(self.trigger.content)
+        commands = yaml.safe_load(self.job.content)
         if not isinstance(commands, list):
             raise StormValidationError(
                 'Procedure content is expected to be a list of commands')
@@ -147,7 +147,7 @@ class SwarmProcedureRunner(SwarmMixin, ProcedureRunner):
             DockerCommand(self.swarm, item) for item in commands]
 
     def run(self):
-        environ = dict(self.trigger.params)
+        environ = dict(self.job.params)
         for command in self.commands:
             command.run(environ)
 
@@ -155,12 +155,12 @@ class SwarmProcedureRunner(SwarmMixin, ProcedureRunner):
 class SwarmProcedureExecutor(
         SwarmMixin, ProcedureExecutor, GeventJobsExecutor):
 
-    def get_pending_triggers(self):
-        qs = super().get_pending_triggers()
+    def get_pending_jobs(self):
+        qs = super().get_pending_jobs()
         return qs.filter(target=self.swarm.cluster_id)
 
-    def get_procedure_runner(self, agent, trigger):
-        return SwarmProcedureRunner(self.swarm, agent, trigger)
+    def get_procedure_runner(self, agent, job):
+        return SwarmProcedureRunner(self.swarm, agent, job)
 
 
 class SwarmClusterProbe(SwarmMixin, DiscoveryProbe):

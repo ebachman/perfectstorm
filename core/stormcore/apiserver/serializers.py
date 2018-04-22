@@ -18,11 +18,11 @@ from stormcore.apiserver.models import (
     ComponentLink,
     Event,
     Group,
+    Job,
     Procedure,
     Resource,
     Service,
     ServiceReference,
-    Trigger,
 )
 
 
@@ -221,7 +221,7 @@ class ProcedureSerializer(DocumentSerializer):
         read_only_fields = ('id',)
 
 
-class BaseTriggerSerializer(DocumentSerializer):
+class BaseJobSerializer(DocumentSerializer):
 
     procedure = StormReferenceField(Procedure, allow_null=True, required=False)
 
@@ -231,29 +231,31 @@ class BaseTriggerSerializer(DocumentSerializer):
     target = StormReferenceField(Resource, allow_null=True, required=False)
 
     class Meta:
-        model = Trigger
-        fields = ('id', 'type', 'owner', 'status', 'procedure', 'content', 'options', 'params',
-                  'result', 'target', 'created')
+        model = Job
+        fields = (
+            'id', 'type', 'owner', 'status', 'procedure', 'content',
+            'options', 'params', 'result', 'target', 'created',
+        )
 
 
-class CreateTriggerSerializer(BaseTriggerSerializer):
+class JobCreateSerializer(BaseJobSerializer):
 
-    class Meta(BaseTriggerSerializer.Meta):
+    class Meta(BaseJobSerializer.Meta):
         read_only_fields = ('id', 'owner', 'status', 'created')
 
 
-class TriggerSerializer(BaseTriggerSerializer):
+class JobSerializer(BaseJobSerializer):
 
-    class Meta(BaseTriggerSerializer.Meta):
-        read_only_fields = BaseTriggerSerializer.Meta.fields
-
-
-class TriggerHandleSerializer(Serializer):
-
-    agent = StormReferenceField(Agent)
+    class Meta(BaseJobSerializer.Meta):
+        read_only_fields = BaseJobSerializer.Meta.fields
 
 
-class TriggerCompleteSerializer(Serializer):
+class JobHandleSerializer(Serializer):
+
+    owner = StormReferenceField(Agent)
+
+
+class JobCompleteSerializer(Serializer):
 
     result = EscapedDictField()
 

@@ -9,7 +9,7 @@ from .base import (
     AgentExecutorMixin,
 )
 from .discovery import DiscoveryExecutor, DiscoveryProbe
-from .triggers import ProcedureExecutor, ProcedureRunner
+from .procedures import ProcedureExecutor, ProcedureRunner
 
 
 __all__ = [
