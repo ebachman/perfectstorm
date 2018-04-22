@@ -125,9 +125,9 @@ class TestJobs:
             try:
                 job.handle(owner=agent.id)
             except StormConflictError:
-                queue.put('conflict')
+                queue.put((agent.id, 'conflict'))
             else:
-                queue.put('success')
+                queue.put((agent.id, 'success'))
 
         # Start all processes
         procs = [
@@ -145,10 +145,25 @@ class TestJobs:
         for proc in procs:
             proc.join(timeout=max_time - time.time())
 
-        results = [
+        results = dict(
             queue.get(timeout=max_time - time.time())
             for i in range(proc_count)
-        ]
+        )
 
-        assert results.count('success') == 1
-        assert results.count('conflict') == proc_count - 1
+        # Check that the results contain exactly 1 'success' and all the
+        # others are 'conflict'
+        assert len(results) == proc_count
+
+        statuses = list(results.values())
+        assert statuses.count('success') == 1
+        assert statuses.count('conflict') == proc_count - 1
+
+        # Check that the agent that reported 'success' is effectively
+        # the owner of the job
+        expected_owner, = (
+            owner for owner, status in results.items()
+            if status == 'success')
+
+        job.reload()
+        assert job.owner == expected_owner
+
