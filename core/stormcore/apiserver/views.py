@@ -134,7 +134,7 @@ class QueryFilterMixin:
         return queryset
 
 
-class MultiLookupMixin:
+class LookupMixin:
     """Mixin that allows looking up objects using more than one field."""
 
     lookup_url_kwarg = 'id'
@@ -150,20 +150,19 @@ class MultiLookupMixin:
             raise Http404
 
 
-class CleanupAgentsMixin:
+class StormViewSet(LookupMixin, QueryFilterMixin, ModelViewSet):
 
-    def dispatch(self, *args, **kwargs):
-        cleanup_expired_agents()
-        return super().dispatch(*args, **kwargs)
+    pass
 
 
-class AgentViewSet(
-        CleanupAgentsMixin, MultiLookupMixin, QueryFilterMixin, ModelViewSet):
+class AgentViewSet(StormViewSet):
 
     queryset = Agent.objects.all()
     serializer_class = AgentSerializer
 
-    lookup_field = 'id'
+    def dispatch(self, *args, **kwargs):
+        cleanup_expired_agents()
+        return super().dispatch(*args, **kwargs)
 
     @detail_route(methods=['POST'])
     def heartbeat(self, request, **kwargs):
@@ -173,13 +172,13 @@ class AgentViewSet(
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-class ResourceViewSet(CleanupAgentsMixin, MultiLookupMixin, QueryFilterMixin, ModelViewSet):
+class ResourceViewSet(StormViewSet):
 
     queryset = Resource.objects.all()
     serializer_class = ResourceSerializer
 
 
-class GroupViewSet(MultiLookupMixin, QueryFilterMixin, ModelViewSet):
+class GroupViewSet(StormViewSet):
 
     queryset = Group.objects.all()
     serializer_class = GroupSerializer
@@ -216,23 +215,21 @@ class GroupViewSet(MultiLookupMixin, QueryFilterMixin, ModelViewSet):
         raise AssertionError('Unsupported method: %s' % request.method)
 
 
-class ApplicationViewSet(MultiLookupMixin, QueryFilterMixin, ModelViewSet):
+class ApplicationViewSet(StormViewSet):
 
     queryset = Application.objects.all()
     serializer_class = ApplicationSerializer
 
 
-class ProcedureViewSet(MultiLookupMixin, QueryFilterMixin, ModelViewSet):
+class ProcedureViewSet(StormViewSet):
 
     queryset = Procedure.objects.all()
     serializer_class = ProcedureSerializer
 
 
-class TriggerViewSet(CleanupAgentsMixin, QueryFilterMixin, ModelViewSet):
+class TriggerViewSet(StormViewSet):
 
     queryset = Trigger.objects.all()
-
-    lookup_field = 'id'
 
     def get_serializer_class(self):
         if self.action == 'create':
