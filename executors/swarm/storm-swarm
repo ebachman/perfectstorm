@@ -28,7 +28,7 @@ from stormlib.executors import (  # noqa: E402
 
 
 _var_re = re.compile(r'(?<!\$)\$(\w+|{[^}]*})')
-_image_re = re.compile(r'^(?:(.+)/)?(.+)(?::(.+))?(?:@(.+))?$')
+_image_re = re.compile(r'^(?:([^/:@]+)/)?([^/:@]+)(?::([^/:@]+))?(?:@([^/@]+))?$')
 
 
 class Swarm:
