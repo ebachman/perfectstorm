@@ -303,7 +303,8 @@ def print_table(cols, rows, truncate=None):
             new_len = columns_len[i] - len(ellipsis)
 
             for row in rows:
-                row[i] = row[i][:new_len] + ellipsis
+                if len(row[i]) > columns_len[i]:
+                    row[i] = row[i][:new_len] + ellipsis
 
     # Format and print the rows/columns
     row_format = col_separator.join(
