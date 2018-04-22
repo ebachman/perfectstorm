@@ -27,4 +27,6 @@ def test_discovery(swarm_cluster, swarm_service):
     assert task.snapshot['ID'] in task.names
     assert task.status == 'running'
     assert task.health == 'healthy'
-    assert task.image.startswith('library/nginx:latest@')
+    assert (
+        task.image == 'library/nginx:latest' or
+        task.image.startswith('library/nginx:latest@'))
