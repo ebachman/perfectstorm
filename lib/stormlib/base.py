@@ -82,7 +82,7 @@ class AbstractCollection(metaclass=abc.ABCMeta):
         raise NotImplementedError
 
     def __repr__(self):
-        return '<{}: {!r}>' % (self.__class__.__name__, list(self))
+        return '<{}: {!r}>'.format(self.__class__.__name__, list(self))
 
 
 class Collection(AbstractCollection):
