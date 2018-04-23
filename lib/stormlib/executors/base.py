@@ -1,6 +1,6 @@
 import abc
+import logging
 import time
-import traceback
 
 try:
     import gevent
@@ -10,9 +10,11 @@ except ImportError:
 
 class BaseExecutor(metaclass=abc.ABCMeta):
 
-    def __init__(self, restart=False, restart_interval=1):
+    def __init__(
+            self, restart=False, restart_interval=1, on_error='log'):
         self.restart = restart
         self.restart_interval = 1
+        self.on_error_behavior = on_error
 
     def __call__(self):
         while True:
@@ -24,8 +26,6 @@ class BaseExecutor(metaclass=abc.ABCMeta):
                     self.after_run()
             except Exception as exc:
                 self.on_error(exc)
-                if not self.restart:
-                    raise
             if not self.restart:
                 break
             time.sleep(self.restart_interval)
@@ -41,14 +41,24 @@ class BaseExecutor(metaclass=abc.ABCMeta):
         pass
 
     def on_error(self, exc):
-        traceback.print_exception(type(exc), exc, exc.__traceback__)
+        if self.on_error_behavior == 'raise':
+            raise exc
+        elif self.on_error_behavior == 'log':
+            logging.getLogger('stormlib.executors').exception(exc)
+        else:
+            raise RuntimeError(
+                'unknown on_error behavior: {!r}'.format(
+                    self.on_error_behavior))
 
 
 class JobsExecutor(BaseExecutor):
 
     def run(self):
         for job in self.iter_jobs():
-            self.run_job(job)
+            try:
+                self.run_job(job)
+            except Exception as exc:
+                self.on_job_error(job, exc)
 
     def before_run(self):
         pass
@@ -62,6 +72,9 @@ class JobsExecutor(BaseExecutor):
 
     def after_run(self):
         pass
+
+    def on_job_error(self, job, exc):
+        self.on_error(exc)
 
 
 class PipelineExecutor(JobsExecutor):
@@ -118,7 +131,7 @@ class AsyncJobsExecutor(JobsExecutor):
             try:
                 job()
             except Exception as exc:
-                self.on_job_error(exc)
+                self.on_job_error(job, exc)
             if not self.restart_jobs:
                 break
             time.sleep(self.restart_jobs_interval)
@@ -130,9 +143,6 @@ class AsyncJobsExecutor(JobsExecutor):
     @abc.abstractmethod
     def stop_jobs(self, job):
         raise NotImplementedError
-
-    def on_job_error(self, exc):
-        self.on_error(exc)
 
 
 class AsyncPipelineExecutor(AsyncJobsExecutor, PipelineExecutor):
