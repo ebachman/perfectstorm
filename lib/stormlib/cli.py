@@ -50,7 +50,8 @@ class CommandLineClient(metaclass=abc.ABCMeta):
         default_addr = '%s:%d' % (session.DEFAULT_HOST, session.DEFAULT_PORT)
         parser.add_argument(
             '-C', '--connect', metavar='HOST[:PORT]', default=default_addr,
-            help='Address to the Perfect Storm API server (default: {})'.format(default_addr))
+            help='Address to the Perfect Storm API '
+                 'Server (default: {})'.format(default_addr))
         parser.add_argument(
             '-D', '--debug', action='store_true',
             help='Show debug logs')

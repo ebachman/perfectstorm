@@ -199,8 +199,10 @@ class GroupViewSet(StormViewSet):
             serializer = GroupAddRemoveMembersSerializer(data=request.data)
             serializer.is_valid(raise_exception=True)
 
-            add_include = Resource.objects.filter(names__in=serializer.validated_data['include'])
-            add_exclude = Resource.objects.filter(names__in=serializer.validated_data['exclude'])
+            add_include = Resource.objects.filter(
+                names__in=serializer.validated_data['include'])
+            add_exclude = Resource.objects.filter(
+                names__in=serializer.validated_data['exclude'])
 
             if add_include or add_exclude:
                 group.include += add_include

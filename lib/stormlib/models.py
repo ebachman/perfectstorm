@@ -1,4 +1,3 @@
-import time
 import traceback
 
 from .base import Model, Collection
@@ -85,7 +84,8 @@ class Group(Model):
 
     def members(self, *args, **kwargs):
         query = dict(*args, **kwargs)
-        return GroupMembersCollection(group=self, model=Resource, query=query, session=self._session)
+        return GroupMembersCollection(
+            group=self, model=Resource, query=query, session=self._session)
 
 
 class Application(Model):

@@ -164,7 +164,8 @@ class Collection(AbstractCollection):
                 return self._elems
 
             documents = self._session.get(self.url)
-            self._elems = [self.model(doc, session=self._session) for doc in documents]
+            self._elems = [
+                self.model(doc, session=self._session) for doc in documents]
 
         return self._elems
 
@@ -200,7 +201,8 @@ class Manager:
 
     @property
     def url(self):
-        session = self._session if self._session is not None else current_session()
+        session = (
+            self._session if self._session is not None else current_session())
         return session.api_root / self.model._path
 
     def none(self):
@@ -269,7 +271,9 @@ class Model(metaclass=ModelMeta):
 
         non_field_kwargs = [key for key in kwargs if key not in self._fields]
         if non_field_kwargs:
-            raise TypeError('__init__() got an unexpected keyword argument {!r}'.format(non_field_kwargs))
+            raise TypeError(
+                '__init__() got an unexpected keyword argument {!r}'.format(
+                    non_field_kwargs))
 
         if session is None:
             session = current_session()

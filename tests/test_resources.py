@@ -12,7 +12,7 @@ def assert_resources_count(expected_count, **kwargs):
     assert len(resource_set) == expected_count
 
 
-def exclude_stranger_resources(returned_resource_set, expected_resource_set):
+def exclude_foreign_resources(returned_resource_set, expected_resource_set):
     """
     Return a subset of `returned_resource_set` that contains only resources
     created by the test suite.
@@ -29,7 +29,8 @@ def exclude_stranger_resources(returned_resource_set, expected_resource_set):
 
 
 def assert_resources_equal(actual_resource_set, expected_resource_set):
-    actual_resource_set = exclude_stranger_resources(actual_resource_set, expected_resource_set)
+    actual_resource_set = exclude_foreign_resources(
+        actual_resource_set, expected_resource_set)
 
     actual_resource_map = {res.id: res for res in actual_resource_set}
     expected_resource_map = {res.id: res for res in expected_resource_set}
@@ -78,15 +79,27 @@ class TestCreate(BaseTestCreateWithAgent):
                 {**self.default_resource, 'type': 'test'},
             ),
             (
-                {'type': 'test', 'owner': PLACEHOLDER, 'names': [random_name()]},
-                {**self.default_resource, 'type': 'test', 'names': [random_name.last]},
+                {
+                    'type': 'test',
+                    'owner': PLACEHOLDER,
+                    'names': [random_name()],
+                },
+                {
+                    **self.default_resource,
+                    'type': 'test',
+                    'names': [random_name.last],
+                },
             ),
             (
                 {'type': 'test', 'owner': PLACEHOLDER, 'names': [
-                    random_name(1), random_name(2), random_name(3),
+                    random_name(1),
+                    random_name(2),
+                    random_name(3),
                 ]},
                 {**self.default_resource, 'type': 'test', 'names': [
-                    random_name.recall(1), random_name.recall(2), random_name.recall(3),
+                    random_name.recall(1),
+                    random_name.recall(2),
+                    random_name.recall(3),
                 ]},
             ),
             (
@@ -270,7 +283,9 @@ class TestFiltering:
         ),
         (
             {'image': {'$regex': '^library/nginx:1.13'}},
-            lambda res: res.image is not None and res.image.startswith('library/nginx:1.13'),
+            lambda res: (
+                res.image is not None and
+                res.image.startswith('library/nginx:1.13')),
         ),
         (
             {'$or': [{'type': 'alpha'}, {'type': 'beta'}]},
@@ -278,7 +293,9 @@ class TestFiltering:
         ),
         (
             {'$and': [{'type': 'alpha'}, {'image': 'library/mongo:latest'}]},
-            lambda res: res.type == 'alpha' and res.image == 'library/mongo:latest',
+            lambda res: (
+                res.type == 'alpha' and
+                res.image == 'library/mongo:latest'),
         ),
         (
             {'$and': [{'type': 'alpha'}, {'type': 'beta'}]},

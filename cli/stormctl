@@ -530,7 +530,8 @@ class EntityHandler(metaclass=abc.ABCMeta):
         subparsers = parser.add_subparsers(dest='command')
         for command in self.commands:
             command_parser = subparsers.add_parser(command.command_name)
-            command_parser.set_defaults(command=functools.partial(command, model=self.model))
+            command_parser.set_defaults(
+                command=functools.partial(command, model=self.model))
             command.add_arguments(command_parser)
 
 
@@ -540,7 +541,8 @@ class ImportCommand(TopLevelCommand):
 
     def add_arguments(self, parser):
         super().add_arguments(parser)
-        parser.add_argument('-f', '--file', type=argparse.FileType(), required=True)
+        parser.add_argument(
+            '-f', '--file', type=argparse.FileType(), required=True)
 
     def __call__(self, client):
         with client.options.file as fp:
@@ -567,8 +569,10 @@ class ImportCommand(TopLevelCommand):
         entity_spec = spec[entity_name]
 
         for entity_handler in client.entity_handlers:
-            if entity_handler.entity_name == entity_name and entity_handler.importer is not None:
-                entity_handler.importer(client, data=entity_spec, model=entity_handler.model)
+            if (entity_handler.entity_name == entity_name and
+                    entity_handler.importer is not None):
+                entity_handler.importer(
+                    client, data=entity_spec, model=entity_handler.model)
                 return
 
         raise ValueError(entity_name)
@@ -613,7 +617,8 @@ class ApplicationImporter(EntityImporter):
             links = []
 
             for link_spec in data['components']:
-                src_component, dest_component, dest_service = self.parse_component_link(link_spec)
+                src_component, dest_component, dest_service = (
+                    self.parse_component_link(link_spec))
                 components.add(src_component)
                 if dest_component:
                     components.add(dest_component)

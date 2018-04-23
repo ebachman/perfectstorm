@@ -9,13 +9,17 @@ class BaseTestCreate:
 
     def pytest_generate_tests(self, metafunc):
         if metafunc.function.__name__ == 'test_client_create':
-            metafunc.parametrize('input_data, expected_data', self.valid_client_data)
+            metafunc.parametrize(
+                'input_data, expected_data', self.valid_client_data)
         elif metafunc.function.__name__ == 'test_server_create':
-            metafunc.parametrize('input_data, expected_data', self.valid_server_data)
+            metafunc.parametrize(
+                'input_data, expected_data', self.valid_server_data)
         elif metafunc.function.__name__ == 'test_client_validation':
-            metafunc.parametrize('input_data, expected_error', self.invalid_client_data)
+            metafunc.parametrize(
+                'input_data, expected_error', self.invalid_client_data)
         elif metafunc.function.__name__ == 'test_server_validation':
-            metafunc.parametrize('input_data, expected_error', self.invalid_server_data)
+            metafunc.parametrize(
+                'input_data, expected_error', self.invalid_server_data)
 
     valid_data = []
     valid_client_only_data = []
@@ -57,7 +61,8 @@ class BaseTestCreate:
 
     def test_server_create(self, api_session, input_data, expected_data):
         response_data = api_session.post(self.model._path, json=input_data)
-        self.check_response_after_save(input_data, expected_data, response_data)
+        self.check_response_after_save(
+            input_data, expected_data, response_data)
 
     def test_client_validation(self, input_data, expected_error):
         obj = self.model(**input_data)
@@ -83,7 +88,8 @@ class BaseTestCreate:
         actual_data = obj._data
         assert actual_data == expected_data
 
-    def check_response_after_save(self, input_data, expected_data, response_data):
+    def check_response_after_save(
+            self, input_data, expected_data, response_data):
         actual_data = {
             key: response_data[key]
             for key in expected_data
@@ -111,7 +117,8 @@ class BaseTestCreateWithAgent(BaseTestCreate):
         expected_data = self.set_owner(agent, expected_data)
         super().test_client_create(input_data, expected_data)
 
-    def test_server_create(self, api_session, agent, input_data, expected_data):
+    def test_server_create(
+            self, api_session, agent, input_data, expected_data):
         input_data = self.set_owner(agent, input_data)
         expected_data = self.set_owner(agent, expected_data)
         super().test_server_create(api_session, input_data, expected_data)
@@ -120,7 +127,8 @@ class BaseTestCreateWithAgent(BaseTestCreate):
         input_data = self.set_owner(agent, input_data)
         super().test_client_validation(input_data, expected_error)
 
-    def test_server_validation(self, api_session, agent, input_data, expected_error):
+    def test_server_validation(
+            self, api_session, agent, input_data, expected_error):
         input_data = self.set_owner(agent, input_data)
         super().test_server_validation(api_session, input_data, expected_error)
 

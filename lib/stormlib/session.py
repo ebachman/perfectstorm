@@ -35,7 +35,9 @@ def _get_current_session():
     if session is not None:
         return session
 
-    raise RuntimeError('No active connections found. You must call connect() or use a Session object in a context manager')
+    raise RuntimeError(
+        'No active connections found. You must call connect() or use a '
+        'Session object in a context manager')
 
 
 def current_session():
@@ -56,7 +58,9 @@ class UrlPath:
         if isinstance(url, UrlPath):
             url = str(url)
         if not isinstance(url, str):
-            raise TypeError('Expected a string or UrlPath object, got {!r}'.format(type(url).__name__))
+            raise TypeError(
+                'Expected a string or UrlPath object, got {!r}'.format(
+                    type(url).__name__))
         self._url = url.rstrip('/')
 
     def params(self, *args, **kwargs):
@@ -101,7 +105,8 @@ class Session:
             host = DEFAULT_HOST
         if port is None:
             port = DEFAULT_PORT
-        self.api_root = UrlPath('http://%s:%d/' % (urllib.parse.quote(host), port))
+        self.api_root = UrlPath('http://{}:{}/'.format(
+            urllib.parse.quote(host), int(port)))
 
     def _check_url(self, url):
         root = str(self.api_root) + '/'

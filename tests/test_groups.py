@@ -111,7 +111,10 @@ class TestCreate(BaseTestCreate):
         lambda res: res.status == 'running' and res.health == 'healthy',
     ),
     (
-        {'$or': [{'status': {'$ne': 'running'}}, {'health': {'$ne': 'healthy'}}]},
+        {'$or': [
+            {'status': {'$ne': 'running'}},
+            {'health': {'$ne': 'healthy'}},
+        ]},
         lambda res: res.status != 'running' or res.health != 'healthy',
     ),
     (
@@ -136,7 +139,8 @@ class TestMembers:
 
     def test_include(self, random_resources, query, filterfunc):
         expected_resources = list(filter(filterfunc, random_resources))
-        unmatched_resources = [res for res in random_resources if res not in expected_resources]
+        unmatched_resources = [
+            res for res in random_resources if res not in expected_resources]
         included_resources = unmatched_resources[:10]
         expected_resources.extend(included_resources)
 
@@ -159,7 +163,8 @@ class TestMembers:
 
     def test_include_exclude(self, random_resources, query, filterfunc):
         expected_resources = list(filter(filterfunc, random_resources))
-        unmatched_resources = [res for res in random_resources if res not in expected_resources]
+        unmatched_resources = [
+            res for res in random_resources if res not in expected_resources]
 
         excluded_resources = expected_resources[-10:]
         del expected_resources[-10:]
@@ -169,7 +174,8 @@ class TestMembers:
 
         include = [res.id for res in included_resources]
         exclude = [res.id for res in excluded_resources]
-        group = self.create_group(query=query, include=include, exclude=exclude)
+        group = self.create_group(
+            query=query, include=include, exclude=exclude)
 
         matched_resources = group.members()
         assert_resources_equal(matched_resources, expected_resources)

@@ -9,7 +9,8 @@ from rest_framework.serializers import (
 )
 
 from rest_framework_mongoengine.fields import ReferenceField
-from rest_framework_mongoengine.serializers import DocumentSerializer, EmbeddedDocumentSerializer
+from rest_framework_mongoengine.serializers import (
+    DocumentSerializer, EmbeddedDocumentSerializer)
 from rest_framework_mongoengine.validators import UniqueValidator
 
 from stormcore.apiserver.models import (
@@ -87,12 +88,16 @@ class ResourceSerializer(DocumentSerializer):
 
     class Meta:
         model = Resource
-        fields = ('id', 'type', 'names', 'owner', 'parent', 'image', 'status', 'health', 'snapshot')
+        fields = (
+            'id', 'type', 'names', 'owner', 'parent', 'image',
+            'status', 'health', 'snapshot')
 
 
 class GroupSerializer(DocumentSerializer):
 
-    name = CharField(allow_blank=False, allow_null=True, required=False, validators=[UniqueValidator(Group.objects.all())])
+    name = CharField(
+        allow_blank=False, allow_null=True, required=False,
+        validators=[UniqueValidator(Group.objects.all())])
 
     query = EscapedDictField()
 
@@ -134,8 +139,10 @@ class ExposedServiceSerializer(EmbeddedDocumentSerializer):
 class ApplicationSerializer(DocumentSerializer):
 
     default_error_messages = {
-        'unknown_group': 'Component {component} is not part of the application',
-        'unknown_service': 'Service {service} is not part of component {component}',
+        'unknown_group':
+            'Component {component} is not part of the application',
+        'unknown_service':
+            'Service {service} is not part of component {component}',
     }
 
     components = ListField(child=StormReferenceField(Group))
@@ -159,7 +166,8 @@ class ApplicationSerializer(DocumentSerializer):
     def validate(self, data):
         validated_links = []
 
-        components = {component.name: component for component in data['components']}
+        components = {
+            component.name: component for component in data['components']}
 
         for item in data['links']:
             from_component_name = item['from_component']['name']
@@ -179,10 +187,14 @@ class ApplicationSerializer(DocumentSerializer):
             try:
                 to_service = to_component.services.get(name=to_service_name)
             except Service.DoesNotExist:
-                self.fail('unknown_service', service=to_service_name, component=to_component_name)
+                self.fail(
+                    'unknown_service',
+                    service=to_service_name,
+                    component=to_component_name)
 
             link = ComponentLink(
-                from_component=from_component, to_service=to_service.to_reference())
+                from_component=from_component,
+                to_service=to_service.to_reference())
 
             validated_links.append(link)
 
@@ -202,7 +214,10 @@ class ApplicationSerializer(DocumentSerializer):
             try:
                 service = component.services.get(name=service_name)
             except Service.DoesNotExist:
-                self.fail('unknown_service', service=service_name, component=component_name)
+                self.fail(
+                    'unknown_service',
+                    service=service_name,
+                    component=component_name)
 
             validated_expose.append(service.to_reference())
 

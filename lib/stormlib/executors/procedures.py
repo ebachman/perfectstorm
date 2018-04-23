@@ -1,7 +1,7 @@
 import abc
 
 from . import AgentExecutorMixin, PollingExecutor
-from .. import Procedure, Job, events
+from .. import Job, events
 
 
 class ProcedureRunner:

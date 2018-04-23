@@ -253,7 +253,9 @@ class StormQuerySet(QuerySet):
         lookup_fields = self._document._meta['lookup_fields']
 
         if value is None or not lookup_fields:
-            raise self.DoesNotExist('{} matching query does not exist.'.format(self.__class__._meta.object_name))
+            raise self.DoesNotExist(
+                '{} matching query does not exist.'.format(
+                    self.__class__._meta.object_name))
 
         query = Q()
         for key in lookup_fields:
@@ -374,8 +376,10 @@ class Resource(TypeMixin, StormDocument):
     parent = StormReferenceField('Resource', null=True)
     image = StringField(min_length=1, null=True)
 
-    status = StringField(choices=STATUS_CHOICES, default='unknown', required=True)
-    health = StringField(choices=HEALTH_CHOICES, default='unknown', required=True)
+    status = StringField(
+        choices=STATUS_CHOICES, default='unknown', required=True)
+    health = StringField(
+        choices=HEALTH_CHOICES, default='unknown', required=True)
 
     snapshot = EscapedDictField()
 
@@ -465,7 +469,8 @@ class ServiceReference(EmbeddedDocument):
             service.name for service in self.group.services]
         if self.service_name not in available_service_names:
             raise ValidationError(
-                'Service {} is not provided by group {}'.format(self.service_name, self.group.name))
+                'Service {} is not provided by group {}'.format(
+                    self.service_name, self.group.name))
 
     def __str__(self):
         return str(self.service)
@@ -478,9 +483,11 @@ class ComponentLink(EmbeddedDocument):
 
     def clean(self):
         if self.from_component not in self._instance.components:
-            raise ValidationError('Source component is not part of the application')
+            raise ValidationError(
+                'Source component is not part of the application')
         if self.to_service.group not in self._instance.components:
-            raise ValidationError('Destination service is not part of the application')
+            raise ValidationError(
+                'Destination service is not part of the application')
 
     def __str__(self):
         return '{} -> {}'.format(self.from_component, self.to_service)

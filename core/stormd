@@ -45,17 +45,22 @@ def parse_args():
         description='Perfect Storm Core API Server')
 
     parser.add_argument(
-        '-b', '--bind', metavar='HOST[:PORT]', type=address, default=[], action='append',
-        help='Address to bind. This can be an IPv4 address, and IPv6 address or a host name. The address can '
-             'optionally include a port number. If no port is specified, the port specified with -p/--port is '
-             'used, or the default port if -p/--port is not provided. This option can be specified multiple '
-             'times to bind multiple addresses. Default: 127.0.0.1')
+        '-b', '--bind', metavar='HOST[:PORT]', type=address,
+        default=[], action='append',
+        help='Address to bind. This can be an IPv4 address, and IPv6 address '
+             'or a host name. The address can optionally include a port '
+             'number. If no port is specified, the port specified with '
+             '-p/--port is used, or the default port if -p/--port is not '
+             'provided. This option can be specified multiple times to bind '
+             'multiple addresses. Default: 127.0.0.1')
     parser.add_argument(
-        '-p', '--port', metavar='PORT', type=int, default=28482, dest='default_port',
+        '-p', '--port', metavar='PORT', type=int,
+        default=28482, dest='default_port',
         help='Port to bind. See also -b/--bind. Default: 28482')
     parser.add_argument(
         '--mongo', metavar='HOST[:PORT]', type=address, default=None,
-        help='MongoDB address. If port is not specified, the default port 27017 is used. Default: 127.0.0.1')
+        help='MongoDB address. If port is not specified, the default port '
+             '27017 is used. Default: 127.0.0.1')
 
     parser.add_argument(
         '-D', '--debug', action='store_true',
@@ -67,10 +72,12 @@ def parse_args():
         options.debug = parse_env_var(bool, 'STORM_DEBUG', False)
 
     if not options.bind:
-        options.bind.append(parse_env_var(address, 'STORM_BIND', ('127.0.0.1', None)))
+        options.bind.append(parse_env_var(
+            address, 'STORM_BIND', ('127.0.0.1', None)))
 
     if not options.mongo:
-        options.mongo = parse_env_var(address, 'STORM_MONGO', ('127.0.0.1', None))
+        options.mongo = parse_env_var(
+            address, 'STORM_MONGO', ('127.0.0.1', None))
     if not options.mongo[1]:
         options.mongo = (options.mongo[0], 27017)
 

@@ -30,10 +30,6 @@ from stormlib.executors import (  # noqa: E402
 )
 
 
-_var_re = re.compile(r'(?<!\$)\$(\w+|{[^}]*})')
-_image_re = re.compile(r'^(?:([^/:@]+)/)?([^/:@]+)(?::([^/:@]+))?(?:@([^/@]+))?$')
-
-
 class Swarm:
 
     def __init__(self, address):
@@ -68,6 +64,8 @@ class SwarmMixin:
 
 
 class DockerCommand(SwarmMixin):
+
+    ENVVAR_REGEX = re.compile(r'(?<!\$)\$(\w+|{[^}]*})')
 
     def __init__(self, swarm, args):
         super().__init__(swarm=swarm)
@@ -110,7 +108,7 @@ class DockerCommand(SwarmMixin):
             expanded = ''
 
             while arg:
-                match = _var_re.search(arg)
+                match = self.ENVVAR_REGEX.search(arg)
                 if match is None:
                     expanded += arg
                     break
@@ -220,6 +218,9 @@ class SwarmServiceProbe(SwarmMixin, DiscoveryProbe):
 
 class SwarmTaskProbe(SwarmMixin, DiscoveryProbe):
 
+    IMAGE_REGEX = re.compile(
+        r'^(?:([^/:@]+)/)?([^/:@]+)(?::([^/:@]+))?(?:@([^/@]+))?$')
+
     resource_type = 'swarm-task'
 
     def __init__(self, executor, *args, **kwargs):
@@ -260,7 +261,7 @@ class SwarmTaskProbe(SwarmMixin, DiscoveryProbe):
         return names
 
     def get_task_image(self, data):
-        match = _image_re.match(data['Spec']['ContainerSpec']['Image'])
+        match = self.IMAGE_REGEX.match(data['Spec']['ContainerSpec']['Image'])
         repository, name, tag, digest = match.groups()
 
         if not repository:
