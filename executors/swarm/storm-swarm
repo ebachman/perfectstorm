@@ -457,6 +457,12 @@ class SwarmClient(AgentClient):
         parser.add_argument(
             '-H', '--host', metavar='HOST[:PORT]', required=True,
             help='Docker daemon to connect to')
+        parser.add_argument(
+            '-p', '--with-procedure-runner', action='store_true',
+            help='Run Swarm procedures submitted to this cluster')
+        parser.add_argument(
+            '-l', '--with-auto-labeling', action='store_true',
+            help='Enable automatic labeling of services and nodes')
 
     def get_agent(self):
         self.swarm = Swarm(self.options.host)
@@ -464,17 +470,29 @@ class SwarmClient(AgentClient):
         data = self.swarm.get('info').json()
         cluster_id = data['Swarm']['Cluster']['ID']
 
-        return Agent(type='swarm', name='swarm-' + cluster_id)
+        return Agent(
+            type='swarm',
+            name='swarm-' + cluster_id,
+            options={
+                'autoLabeling': self.options.with_auto_labeling,
+                'procedureRunner': self.options.with_procedure_runner,
+            },
+        )
 
     def run(self):
-        executor = GeventPipelineExecutor(
-            jobs=[
-                SwarmDiscoveryExecutor(swarm=self.swarm, agent=self.agent),
-                SwarmProcedureExecutor(swarm=self.swarm, agent=self.agent),
-                SwarmNodeLabelingExecutor(swarm=self.swarm, agent=self.agent),
-            ],
-            restart_jobs=True)
+        jobs = [
+            SwarmDiscoveryExecutor(swarm=self.swarm, agent=self.agent),
+        ]
 
+        if self.options.with_procedure_runner:
+            jobs.append(SwarmProcedureExecutor(
+                swarm=self.swarm, agent=self.agent))
+
+        if self.options.with_auto_labeling:
+            jobs.append(SwarmNodeLabelingExecutor(
+                swarm=self.swarm, agent=self.agent))
+
+        executor = GeventPipelineExecutor(jobs=jobs, restart_jobs=True)
         executor()
 
 

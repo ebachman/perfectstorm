@@ -5,7 +5,7 @@ import pytest
 
 
 @pytest.fixture(scope='session', autouse=True)
-def skip_without_stormctl(request, api_session):
+def require_stormctl(request, api_session):
     """Skip the execution of tests if stormctl is not in $PATH."""
     for path in os.get_exec_path():
         name = os.path.join(path, 'stormctl')
@@ -27,15 +27,8 @@ def examples_path():
     pytest.skip('examples directiory not found')
 
 
-# Fixtures borrowed from tests.swarm
-
+# Fixture borrowed from tests.swarm
 @pytest.fixture(scope='session')
-def skip_without_swarm(request, api_session):
-    from ..swarm.conftest import skip_without_swarm
-    skip_without_swarm(request, api_session)
-
-
-@pytest.fixture(scope='session')
-def swarm_cluster(skip_without_swarm):
+def swarm_cluster():
     from ..swarm.conftest import swarm_cluster
     return swarm_cluster()
