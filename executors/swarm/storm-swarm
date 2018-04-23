@@ -6,16 +6,21 @@ gevent.monkey.patch_all()
 # on standard error
 gevent.get_hub().NOT_ERROR += (KeyboardInterrupt,)
 
+import collections  # noqa: E402
+import functools  # noqa: E402
 import re  # noqa: E402
 import shlex  # noqa: E402
 import subprocess  # noqa: E402
+import urllib.parse  # noqa: E402
 
 import requests  # noqa: E402
 
-from stormlib import Agent, Resource  # noqa: E402
+from stormlib import Agent, Resource, Group, events  # noqa: E402
 from stormlib.cli import AgentClient  # noqa: E402
 from stormlib.exceptions import StormValidationError  # noqa: E402
 from stormlib.executors import (  # noqa: E402
+    PollingExecutor,
+    AgentExecutorMixin,
     DiscoveryExecutor,
     DiscoveryProbe,
     GeventJobsExecutor,
@@ -35,16 +40,22 @@ class Swarm:
         self.address = address
         self._cluster_id = None
 
-    def get_json(self, path):
+    def get(self, path):
         url = 'http://{}/{}'.format(self.address, path)
         response = requests.get(url)
         response.raise_for_status()
-        return response.json()
+        return response
+
+    def post(self, path, **kwargs):
+        url = 'http://{}/{}'.format(self.address, path)
+        response = requests.post(url, **kwargs)
+        response.raise_for_status()
+        return response
 
     @property
     def cluster_id(self):
         if self._cluster_id is None:
-            data = self.get_json('info')
+            data = self.get('info').json()
             self._cluster_id = data['Swarm']['Cluster']['ID']
         return self._cluster_id
 
@@ -166,7 +177,7 @@ class SwarmClusterProbe(SwarmMixin, DiscoveryProbe):
     resource_type = 'swarm-cluster'
 
     def get_snapshots(self):
-        data = self.swarm.get_json('info')
+        data = self.swarm.get('info').json()
         # Remove SystemTime to avoid unnecessary updates
         del data['SystemTime']
         return [data]
@@ -190,7 +201,7 @@ class SwarmServiceProbe(SwarmMixin, DiscoveryProbe):
     resource_type = 'swarm-service'
 
     def get_snapshots(self):
-        return self.swarm.get_json('services')
+        return self.swarm.get('services').json()
 
     def get_internal_id(self, data):
         return data['ID']
@@ -216,7 +227,7 @@ class SwarmTaskProbe(SwarmMixin, DiscoveryProbe):
         super().__init__(*args, **kwargs)
 
     def get_snapshots(self):
-        return self.swarm.get_json('tasks')
+        return self.swarm.get('tasks').json()
 
     def get_internal_id(self, data):
         return data['ID']
@@ -298,7 +309,7 @@ class SwarmNodeProbe(SwarmMixin, DiscoveryProbe):
     resource_type = 'swarm-node'
 
     def get_snapshots(self):
-        return self.swarm.get_json('nodes')
+        return self.swarm.get('nodes').json()
 
     def get_internal_id(self, data):
         return data['ID']
@@ -335,6 +346,110 @@ class SwarmDiscoveryExecutor(SwarmMixin, DiscoveryExecutor):
         ]
 
 
+class SwarmNodeLabelingExecutor(
+        SwarmMixin, AgentExecutorMixin, PollingExecutor, GeventJobsExecutor):
+
+    # XXX It is possible to create groups with a query that excludes
+    # XXX members of the group itself. Example:
+    # XXX
+    # XXX   group:
+    # XXX     query:
+    # XXX       snapshot.Spec.Labels.storm-grouped: { $exists: false }
+    # XXX
+    # XXX This will result in an infinite label/unlabel loop:
+    # XXX
+    # XXX - during the first iteration, all resources without a
+    # XXX   'storm-grouped' label will be labelled;
+    # XXX - at the second iteration the same resources will be no
+    # XXX   longer part of the group, and will lose their label;
+    # XXX - at this point we are back to our initial conditions:
+    # XXX   the label will be applied again, then removed, and so on...
+
+    def get_labeling(self):
+        labels = collections.defaultdict(list)
+
+        named_groups = Group.objects.filter(name={'$exists': True})
+
+        for group in named_groups:
+            relevant_members = group.members().filter(
+                type={'$in': ('swarm-service', 'swarm-node')},
+                owner=self.agent.id,
+            )
+
+            for res in relevant_members:
+                labels[res.id].append(group.name)
+
+        # Get all the resources that have 'storm-grouped' label, but that
+        # do not belong to any group. Those will have their label removed.
+        extra_labels = Resource.objects.filter(**{
+            'id': {'$nin': list(labels)},
+            'type': {'$in': ('swarm-service', 'swarm-node')},
+            'owner': self.agent.id,
+            'snapshot.Spec.Labels.storm-grouped': {'$exists': True},
+        })
+
+        for res in extra_labels:
+            labels[res.id] = []
+
+        return labels
+
+    def poll_jobs(self):
+        event_filter = events.EventFilter([
+            events.EventMask(event_type='created', entity_type='resource'),
+            events.EventMask(event_type='updated', entity_type='resource'),
+            events.EventMask(event_type='created', entity_type='group'),
+            events.EventMask(event_type='updated', entity_type='group'),
+            events.EventMask(event_type='deleted', entity_type='group'),
+        ])
+
+        with event_filter(events.stream()) as stream:
+            while True:
+                labeling = self.get_labeling()
+                if labeling:
+                    break
+                next(stream)
+
+        return [
+            functools.partial(self.assign_labels, res_id, group_names)
+            for res_id, group_names in labeling.items()
+        ]
+
+    def assign_labels(self, res_id, group_names):
+        res = Resource.objects.get(res_id)
+
+        spec = res.snapshot['Spec']
+        labels = spec['Labels']
+
+        new_labels = {
+            key: value for key, value in labels.items()
+            if not key.startswith('storm-group')
+        }
+
+        if group_names:
+            new_labels['storm-grouped'] = 'yes'
+            for name in group_names:
+                new_labels['storm-group-' + name] = 'yes'
+
+        if labels == new_labels:
+            return
+
+        spec['Labels'] = new_labels
+
+        if res.type == 'swarm-service':
+            update_type = 'services'
+        elif res.type == 'swarm-node':
+            update_type = 'nodes'
+        else:
+            raise RuntimeError(res.type)
+        update_id = urllib.parse.quote(res.snapshot['ID'])
+        update_version = res.snapshot['Version']['Index']
+
+        self.swarm.post(
+            '{}/{}/update'.format(update_type, update_id),
+            params={'version': update_version},
+            json=spec)
+
+
 class SwarmClient(AgentClient):
 
     def add_arguments(self, parser):
@@ -346,7 +461,7 @@ class SwarmClient(AgentClient):
     def get_agent(self):
         self.swarm = Swarm(self.options.host)
 
-        data = self.swarm.get_json('info')
+        data = self.swarm.get('info').json()
         cluster_id = data['Swarm']['Cluster']['ID']
 
         return Agent(type='swarm', name='swarm-' + cluster_id)
@@ -356,6 +471,7 @@ class SwarmClient(AgentClient):
             jobs=[
                 SwarmDiscoveryExecutor(swarm=self.swarm, agent=self.agent),
                 SwarmProcedureExecutor(swarm=self.swarm, agent=self.agent),
+                SwarmNodeLabelingExecutor(swarm=self.swarm, agent=self.agent),
             ],
             restart_jobs=True)
 

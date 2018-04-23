@@ -2,8 +2,6 @@ import random
 
 import pytest
 
-from ..stubs import random_name
-
 
 @pytest.fixture(scope='session', autouse=True)
 def skip_without_swarm(request, api_session):
@@ -27,40 +25,12 @@ def swarm_cluster():
 
 @pytest.fixture(scope='session')
 def swarm_service(request, swarm_cluster):
-    from stormlib import Resource, Procedure
+    from .samples import create_service, delete_service
 
-    service_name = random_name()
-
-    create_procedure = Procedure(
-        type='swarm',
-        content={
-            'run': [
-                'service create --name {} nginx:latest'.format(service_name),
-            ],
-        },
-    )
-    create_procedure.save()
-
-    job = create_procedure.exec(target=swarm_cluster.id)
-    job.wait()
-
-    yield Resource.objects.get(service_name)
+    resource = create_service(swarm_cluster)
+    yield resource
 
     if request.config.getoption('--no-cleanup'):
         return
 
-    rm_procedure = Procedure(
-        type='swarm',
-        content={
-            'run': [
-                'service rm {}'.format(service_name),
-            ],
-        },
-    )
-    rm_procedure.save()
-
-    job = rm_procedure.exec(target=swarm_cluster.id)
-    job.wait()
-
-    create_procedure.delete()
-    rm_procedure.delete()
+    delete_service(resource)
