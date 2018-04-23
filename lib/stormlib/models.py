@@ -24,6 +24,7 @@ class Agent(Model):
     type = StringField()
     name = StringField(null=True)
     status = StringField(default='offline')
+    options = DictField()
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

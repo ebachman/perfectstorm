@@ -333,6 +333,7 @@ class Agent(NameMixin, TypeMixin, StormDocument):
 
     status = StringField(
         choices=STATUS_CHOICES, default='offline', required=True)
+    options = EscapedDictField()
 
     meta = {
         'id_prefix': 'agt-',

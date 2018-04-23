@@ -1,12 +1,21 @@
 from stormlib import Agent
 
 from .create import BaseTestCreate
-from .stubs import ANY, IDENTIFIER, random_name
+from .stubs import ANY, IDENTIFIER, PLACEHOLDER, random_name
 
 
 class TestCreate(BaseTestCreate):
 
     model = Agent
+
+    default_agent = {
+        'id': IDENTIFIER,
+        'type': PLACEHOLDER,
+        'name': None,
+        'status': 'offline',
+        'options': {},
+        'heartbeat': ANY,
+    }
 
     @property
     def valid_data(self):
@@ -15,42 +24,40 @@ class TestCreate(BaseTestCreate):
         return [
             (
                 {'type': 'test'},
-                {
-                    'id': IDENTIFIER,
-                    'type': 'test',
-                    'name': None,
-                    'status': 'offline',
-                    'heartbeat': ANY,
-                },
+                {**self.default_agent, 'type': 'test'},
             ),
             (
                 {'type': 'test', 'name': random_name()},
                 {
-                    'id': IDENTIFIER,
+                    **self.default_agent,
                     'type': 'test',
                     'name': random_name.last,
-                    'status': 'offline',
-                    'heartbeat': ANY,
                 },
             ),
             (
                 {'type': 'test', 'name': random_name(), 'status': 'offline'},
                 {
-                    'id': IDENTIFIER,
+                    **self.default_agent,
                     'type': 'test',
                     'name': random_name.last,
                     'status': 'offline',
-                    'heartbeat': ANY,
                 },
             ),
             (
                 {'type': 'test', 'name': random_name(), 'status': 'online'},
                 {
-                    'id': IDENTIFIER,
+                    **self.default_agent,
                     'type': 'test',
                     'name': random_name.last,
                     'status': 'online',
-                    'heartbeat': ANY,
+                },
+            ),
+            (
+                {'type': 'test', 'options': {'x': 'y'}},
+                {
+                    **self.default_agent,
+                    'type': 'test',
+                    'options': {'x': 'y'},
                 },
             ),
         ]
