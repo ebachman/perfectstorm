@@ -33,7 +33,7 @@ class DiscoveryProbe(metaclass=abc.ABCMeta):
         resource.save()
 
     def delete_resource(self, resource):
-        resource.save()
+        resource.delete()
 
 
 class DiscoveryExecutor(AgentExecutorMixin, PollingExecutor):
