@@ -782,7 +782,6 @@ class JobHandler(EntityHandler):
     commands = [
         EntityListCommand([
             ('ID', get_object_id),
-            ('TYPE', get_object_type),
             ('STATUS', get_object_status),
         ]),
         EntityGetCommand(),
