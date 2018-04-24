@@ -1,3 +1,4 @@
+import copy
 import json
 import time
 from datetime import datetime
@@ -47,47 +48,32 @@ from stormcore.apiserver.serializers import (
 )
 
 
-def _traverse_dict(dct):
-    if isinstance(dct, dict):
-        it = dct.items()
-    elif isinstance(dct, list):
-        it = enumerate(dct)
-    else:
-        raise TypeError(type(dct).__name__)
+def prepare_query(query, model):
+    if 'id' in query:
+        query['_id'] = query.pop('id')
 
-    for key, value in it:
-        yield dct, key, value
-        if isinstance(value, (dict, list)):
-            yield from _traverse_dict(value)
-
-
-def _resolve_references(model, query):
-    refs = []
-
-    for dct, key, value in _traverse_dict(query):
-        field = model._fields.get(key)
-        if isinstance(field, StormReferenceField):
-            refs.append((dct, key, value, field))
-
-    if not refs:
-        return query
-
-    for dct, key, value, field in refs:
-        doctype = field.document_type
-
-        try:
-            document = doctype.objects.only('id').lookup(value)
-        except Exception:
-            continue
-
-        dct[key] = document.id
-
-    return query
+    for key, value in query.items():
+        if key.startswith('$'):
+            if isinstance(value, list):
+                for item in value:
+                    prepare_query(item, model)
+            else:
+                prepare_query(value, model)
+        else:
+            field = model._fields.get(key)
+            if isinstance(field, StormReferenceField):
+                doctype = field.document_type
+                try:
+                    document = doctype.objects.only('id').lookup(value)
+                except Exception:
+                    continue
+                query[key] = document.id
 
 
 def query_filter(query, queryset):
     if query:
-        query = _resolve_references(queryset._document, query)
+        query = copy.deepcopy(query)
+        prepare_query(query, queryset._document)
         queryset = queryset.filter(__raw__=query)
     return queryset
 
