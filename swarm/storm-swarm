@@ -147,7 +147,6 @@ class SwarmClusterProbe(SwarmMixin, DiscoveryProbe):
                 data['Swarm']['Cluster']['ID'],
             ],
             status='running',
-            health='healthy',
         )
 
 
@@ -161,17 +160,22 @@ class SwarmServiceProbe(SwarmMixin, DiscoveryProbe):
     def get_internal_id(self, data):
         return data['ID']
 
+    def get_service_names(self, data):
+        return [
+            data['Spec']['Name'],
+            data['ID'],
+        ]
+
+    def get_service_image(self, data):
+        return canonical_image_name(
+            data['Spec']['TaskTemplate']['ContainerSpec']['Image'])
+
     def model_resource(self, data):
         return Resource(
             parent=self.swarm.cluster_id,
-            names=[
-                data['Spec']['Name'],
-                data['ID'],
-            ],
-            image=canonical_image_name(
-                data['Spec']['TaskTemplate']['ContainerSpec']['Image']),
+            names=self.get_service_names(data),
+            image=self.get_service_image(data),
             status='running',
-            health='healthy',
         )
 
 
@@ -231,12 +235,21 @@ class SwarmTaskProbe(SwarmMixin, DiscoveryProbe):
             'starting': 'starting',
             'running': 'running',
             'complete': 'stopped',
-            'shutdown': 'removing',
+            'shutdown': 'stopped',
             'failed': 'error',
             'rejected': 'error',
         }
 
         return docker2storm_status.get(data['Status']['State'], 'unknown')
+
+    def get_task_health(self, data):
+        if ('Healthcheck' in data['Spec']['ContainerSpec'] and
+                data['Status']['State'] == 'running'):
+            # If a task has health checks configured and it is running, it
+            # means it is healthy. If the health checks were reporting errors,
+            # then Swarm would automatically restart the task.
+            return 'healthy'
+        return 'unknown'
 
     def model_resource(self, data):
         return Resource(
@@ -244,7 +257,7 @@ class SwarmTaskProbe(SwarmMixin, DiscoveryProbe):
             names=self.get_task_names(data),
             image=self.get_task_image(data),
             status=self.get_task_status(data),
-            health='healthy',
+            health=self.get_task_health(data),
         )
 
     def save_resource(self, resource):
@@ -276,6 +289,12 @@ class SwarmNodeProbe(SwarmMixin, DiscoveryProbe):
     def get_internal_id(self, data):
         return data['ID']
 
+    def get_node_names(self, data):
+        return [
+            data['Description']['Hostname'],
+            data['ID'],
+        ]
+
     def get_node_status(self, data):
         docker2storm_status = {
             'disconnected': 'stopped',
@@ -285,6 +304,17 @@ class SwarmNodeProbe(SwarmMixin, DiscoveryProbe):
 
         return docker2storm_status.get(data['Status']['State'], 'unknown')
 
+    def get_node_health(self, data):
+        reachability2health = {
+            'reachable': 'healthy',
+            'unreachable': 'unhealthy',
+        }
+
+        try:
+            return reachability2health[data['ManagerStatus']['Reachability']]
+        except KeyError:
+            return 'unknown'
+
     def model_resource(self, data):
         return Resource(
             parent=self.swarm.cluster_id,
@@ -293,7 +323,7 @@ class SwarmNodeProbe(SwarmMixin, DiscoveryProbe):
                 data['ID'],
             ],
             status=self.get_node_status(data),
-            health='healthy',
+            health=self.get_node_health(data),
         )
 
 
