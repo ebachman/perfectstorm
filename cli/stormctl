@@ -445,6 +445,8 @@ class EntityListTreeCommand(EntityListCommand):
 
     def create_tree(self, queryset):
         root_nodes = []
+        all_nodes = set()
+        complete_nodes = set()
         id2node = collections.defaultdict(TreeNode)
 
         for obj in queryset:
@@ -452,11 +454,21 @@ class EntityListTreeCommand(EntityListCommand):
             node.values.extend(
                 getter(obj) for column_name, getter in self.columns)
 
+            all_nodes.add(obj.id)
+            complete_nodes.add(obj.id)
+
             if obj.parent is None:
                 root_nodes.append(node)
             else:
                 parent_node = id2node[obj.parent]
                 parent_node.children.append(node)
+                all_nodes.add(obj.parent)
+
+        # Incomplete nodes can appear when objects in the queryset have a
+        # 'parent' attribute but the parent is not in the queryset.
+        incomplete_nodes = all_nodes - complete_nodes
+        for node_id in incomplete_nodes:
+            root_nodes.extend(id2node[node_id].children)
 
         return root_nodes
 
