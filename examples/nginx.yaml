@@ -27,6 +27,6 @@
     name: nginx-destroy
     type: swarm
     content: |
-      % for service in groups.get('nginx').members.filter({'type': 'swarm-service', 'parent': target.id})
+      % for service in groups.nginx.members({'type': 'swarm-service', 'parent': target.id})
         - service rm {{ service.snapshot.ID }}
       % endfor

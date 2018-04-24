@@ -246,7 +246,7 @@ class JinjaQuerySet:
                 self._serializer_class)
         return self._serialize(self._queryset[index])
 
-    def filter(self, query):
+    def __call__(self, query):
         return JinjaQuerySet(
             query_filter(query, self._queryset),
             self._serializer_class)
@@ -254,8 +254,10 @@ class JinjaQuerySet:
 
 class JinjaDocumentClass(JinjaQuerySet):
 
-    def get(self, id):
-        return self._serialize(self._queryset.lookup(id))
+    def __getitem__(self, key):
+        if isinstance(key, str):
+            return self._serialize(self._queryset.lookup(key))
+        return super().__getitem__(key)
 
 
 class JinjaResources(JinjaDocumentClass):

@@ -50,20 +50,20 @@
     name: consul-agents
     type: swarm
     content: |
-      % set server_group = groups.get('consul-servers')
+      % set server_group = groups['consul-servers']
       % set server_task = server_group.members.filter({'type': 'swarm-task',
-                                                       'status': 'running'})|first
-      % set server_node = resources.get(server_task.snapshot.NodeID)
+                                                       'status': 'running'})|random
+      % set server_node = resources[server_task.snapshot.NodeID]
 
       % set nodes_with_consul = []
-      % consul_tasks = groups.get('consul').members.filter({'type': 'swarm-task'})
+      % consul_tasks = groups.consul.members({'type': 'swarm-task'})
       % for service in consul_tasks
       %   do nodes_with_consul.append(task.snapshot.NodeID)
       % endfor
 
-      % set nodes_without_consul = resources.filter({'type': 'swarm-node',
-                                                     'parent': target.id,
-                                                     'snapshot.ID': {'$nin': nodes_with_consul}})
+      % set nodes_without_consul = resources({'type': 'swarm-node',
+                                              'parent': target.id,
+                                              'snapshot.ID': {'$nin': nodes_with_consul}})
 
       % for node in nodes_without_consul
         - service create
