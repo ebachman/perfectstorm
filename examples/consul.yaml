@@ -13,7 +13,9 @@
         $in: [swarm-service, swarm-task]
       image:
         $regex: '^library/consul:'
-      snapshot.Spec.TaskTemplate.ContainerSpec.Args: '-server'
+      $or:
+        - { snapshot.Spec.ContainerSpec.Args: '-server' }
+        - { snapshot.Spec.TaskTemplate.ContainerSpec.Args: '-server' }
 
 - group:
     name: consul-agents
@@ -22,8 +24,10 @@
         $in: [swarm-service, swarm-task]
       image:
         $regex: '^library/consul:'
+      snapshot.Spec.ContainerSpec.Args:
+        $ne: '-server'
       snapshot.Spec.TaskTemplate.ContainerSpec.Args:
-        $regex: '^-retry-join(=|$)'
+        $ne: '-server'
 
 - application:
     name: consul
@@ -33,43 +37,72 @@
       - consul-servers
 
 - procedure:
-    name: consul-server
+    name: consul-servers
     type: swarm
     content: |
-      % set node = resources.filter({'type': 'swarm-node',
-                                     'parent': target.id})|random
+      % set nodes = resources({
+          'type': 'swarm-node',
+          'parent': target.id,
+        })
 
-      - service create
-          --name consul-server
-          --network host
-          --constraint "node.id=={{ node.snapshot.ID }}"
-          -e 'CONSUL_LOCAL_CONFIG={"skip_leave_on_interrupt":true}'
-          consul agent -server -bootstrap-expect=1 -bind="{{ node.snapshot.Status.Addr }}"
+      % for i in range(COUNT)
+      %   set node = nodes[i]
+          - service create
+              --name consul-server-{{ i + 1 }}
+              --network host
+              --constraint "node.id=={{ node.snapshot.ID }}"
+              -e 'CONSUL_LOCAL_CONFIG={"skip_leave_on_interrupt":true}'
+              consul agent -server -bootstrap-expect={{ COUNT }}
+              -bind="{{ node.snapshot.Status.Addr }}"
+      %   for j in range(COUNT)
+      %     if i != j
+              -retry-join="{{ nodes[j].snapshot.Status.Addr }}"
+      %     endif
+      %   endfor
+      % endfor
+    params:
+      COUNT: 1
 
 - procedure:
     name: consul-agents
     type: swarm
     content: |
-      % set server_group = groups['consul-servers']
-      % set server_task = server_group.members.filter({'type': 'swarm-task',
-                                                       'status': 'running'})|random
-      % set server_node = resources[server_task.snapshot.NodeID]
+      % set server_tasks = groups['consul-servers'].members({'type': 'swarm-task'})
+      % set server_node_ids = server_tasks|map(attribute='snapshot.NodeID')|list
+      % set server_nodes = resources({
+          'type': 'swarm-node',
+          'parent': target.id,
+          'snapshot.ID': {'$in': server_node_ids},
+        })
 
-      % set nodes_with_consul = []
-      % consul_tasks = groups.consul.members({'type': 'swarm-task'})
-      % for service in consul_tasks
-      %   do nodes_with_consul.append(task.snapshot.NodeID)
-      % endfor
+      % set consul_tasks = groups.consul.members({'type': 'swarm-task'})
+      % set consul_node_ids = consul_tasks|map(attribute='snapshot.NodeID')|list
 
-      % set nodes_without_consul = resources({'type': 'swarm-node',
-                                              'parent': target.id,
-                                              'snapshot.ID': {'$nin': nodes_with_consul}})
+      % set nodes_without_consul = resources({
+          'type': 'swarm-node',
+          'parent': target.id,
+          'snapshot.ID': {'$nin': consul_node_ids},
+        })
 
       % for node in nodes_without_consul
-        - service create
-            --name "consul-agent-{{ node.snapshot.ID }}"
-            --network host
-            --constraint "node.id=={{ node.snapshot.ID }}"
-            -e 'CONSUL_LOCAL_CONFIG={"leave_on_terminate":true}'
-            consul agent -bind="{{ node.snapshot.Status.Addr }}" -retry-join="{{ server_node.snapshot.Status.Addr }}"
+          - service create
+              --name "consul-agent-{{ node.snapshot.ID }}"
+              --network host
+              --constraint "node.id=={{ node.snapshot.ID }}"
+              -e 'CONSUL_LOCAL_CONFIG={"leave_on_terminate":true}'
+              consul agent -bind="{{ node.snapshot.Status.Addr }}"
+      %   for node in server_nodes
+              -retry-join="{{ node.snapshot.Status.Addr }}"
+      %   endfor
+      % endfor
+
+- procedure:
+    name: consul-destroy
+    type: swarm
+    content: |
+      % for service in groups.consul.members({
+            'type': 'swarm-service',
+            'parent': target.id,
+          })
+        - service rm {{ service.snapshot.ID }}
       % endfor
