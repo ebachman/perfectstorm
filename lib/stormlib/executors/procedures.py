@@ -11,8 +11,6 @@ class ProcedureRunner:
         self.job = job
 
     def __call__(self):
-        self.prepare()
-
         with self.job.handle(self.agent.id):
             try:
                 result = self.run()
@@ -20,9 +18,6 @@ class ProcedureRunner:
                 self.fail(exc)
             else:
                 self.complete(result)
-
-    def prepare(self):
-        self.procedure = self.job.get_procedure()
 
     @abc.abstractmethod
     def run(self):

@@ -1,3 +1,5 @@
+import json
+
 from stormlib import Resource, Procedure
 
 from ..stubs import random_name
@@ -8,16 +10,13 @@ def create_service(swarm_cluster):
 
     create_procedure = Procedure(
         type='swarm',
-        content={
-            'run': [
-                'service create --name {} nginx:latest'.format(service_name),
-            ],
-        },
+        content=json.dumps([
+            'service create --name {} nginx:latest'.format(service_name),
+        ]),
     )
     create_procedure.save()
 
-    job = create_procedure.exec(target=swarm_cluster.id)
-    job.wait()
+    create_procedure.exec(target=swarm_cluster.id)
 
     create_procedure.delete()
 
@@ -29,15 +28,12 @@ def delete_service(resource):
 
     rm_procedure = Procedure(
         type='swarm',
-        content={
-            'run': [
-                'service rm {}'.format(service_id),
-            ],
-        },
+        content=json.dumps([
+            'service rm {}'.format(service_id),
+        ]),
     )
     rm_procedure.save()
 
-    job = rm_procedure.exec(target=resource.parent)
-    job.wait()
+    rm_procedure.exec(target=resource.parent)
 
     rm_procedure.delete()

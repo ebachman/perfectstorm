@@ -13,9 +13,8 @@
 - procedure:
     name: nginx-create
     type: swarm
-    content:
-      run:
-        - service create
+    content: |
+      - service create
           --name nginx
           --mode global
           --publish 80:80
@@ -26,6 +25,7 @@
 - procedure:
     name: nginx-destroy
     type: swarm
-    content:
-      run:
-        - service rm nginx
+    content: |
+      % for service in groups.get('nginx').members.filter({'type': 'swarm-service', 'parent': target.id})
+        - service rm {{ service.snapshot.ID }}
+      % endfor

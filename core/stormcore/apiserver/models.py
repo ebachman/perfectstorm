@@ -506,7 +506,7 @@ class Application(NameMixin, StormDocument):
 
 class Procedure(NameMixin, TypeMixin, StormDocument):
 
-    content = EscapedDictField()
+    content = StringField(required=True, default='')
     options = EscapedDictField()
     params = EscapedDictField()
 
@@ -528,6 +528,8 @@ class Job(StormDocument):
 
     target = StormReferenceField(Resource)
     procedure = StormReferenceField(Procedure)
+
+    content = StringField()
     options = EscapedDictField()
     params = EscapedDictField()
 

@@ -19,7 +19,7 @@ class TestCreate(BaseTestCreateWithAgent):
         'id': IDENTIFIER,
         'type': PLACEHOLDER,
         'name': None,
-        'content': {},
+        'content': '',
         'params': {},
         'options': {},
     }
@@ -30,9 +30,9 @@ class TestCreate(BaseTestCreateWithAgent):
             {**default_procedure, 'type': 'test'},
         ),
         (
-            {'type': 'test', 'content': {'hello': 'world'}},
+            {'type': 'test', 'content': 'hello'},
             {**default_procedure, 'type': 'test',
-             'content': {'hello': 'world'}},
+             'content': 'hello'},
         ),
         (
             {'type': 'test', 'params': {'x': 'y'}},
@@ -44,12 +44,12 @@ class TestCreate(BaseTestCreateWithAgent):
         ),
         (
             {
-                'type': 'test', 'content': {'hello': 'world'},
+                'type': 'test', 'content': 'hello',
                 'params': {'x': 'y'}, 'options': {'i': 'j'},
             },
             {**default_procedure,
              'type': 'test',
-             'content': {'hello': 'world'},
+             'content': 'hello',
              'params': {'x': 'y'},
              'options': {'i': 'j'}},
         ),
@@ -71,16 +71,16 @@ class TestJobs:
         procedure = Procedure(
             type='test',
             name=random_name(),
-            content={'dummy': [1, 2, 3]},
-            options={'x': 1, 'y': 2, 'z': 3},
-            params={'i': 1, 'j': 2, 'k': 3},
+            content='{{ x }} + {{ y }} = {{ x + y }}',
+            options={'i': 1, 'j': 2, 'k': 3},
+            params={'x': 1, 'y': 2, 'z': 3},
         )
         procedure.save()
         assert procedure.id is not None
         return procedure
 
     def test_lifecycle(self, agent, procedure, resource):
-        job = procedure.exec(target=resource.id)
+        job = procedure.exec(target=resource.id, wait=False)
 
         assert job.status == 'pending'
         assert job.is_pending()
@@ -106,7 +106,7 @@ class TestJobs:
         # handle the same job at the same time. Only one of those processes
         # should succeed, the others should fail with 409 Conflict.
         proc_count = 64
-        job = procedure.exec(target=resource.id)
+        job = procedure.exec(target=resource.id, wait=False)
 
         # Barrier is used to make the processess call handle() at the same
         # time
@@ -173,7 +173,7 @@ class TestJobs:
                 # Pretend to do some work
                 time.sleep(2)
 
-        job = procedure.exec(target=resource.id)
+        job = procedure.exec(target=resource.id, wait=False)
 
         process = Process(target=handle_job)
         process.start()
@@ -184,3 +184,7 @@ class TestJobs:
             process.join()
 
         assert job.is_complete()
+
+    def test_content_rendering(self, agent, procedure, resource):
+        job = procedure.exec(target=resource.id, wait=False)
+        assert job.content == '1 + 2 = 3'

@@ -106,20 +106,29 @@ class Procedure(Model):
     type = StringField()
     name = StringField(null=True)
 
-    content = DictField()
+    content = StringField(blank=True, default='')
     options = DictField()
     params = DictField()
 
-    def exec(self, target, options=None, params=None):
-        job = Job(
-            target=target,
-            procedure=self.id,
-            options=options,
-            params=params,
-        )
+    def exec(self, target, options=None, params=None, wait=True):
+        if options is None:
+            options = {}
+        if params is None:
+            params = {}
 
-        job.save()
+        url = self.url / 'exec'
+        data = {
+            'target': target,
+            'procedure': self.id,
+            'options': options,
+            'params': params,
+        }
 
+        data = self._session.post(url, json=data)
+        job = Job(data, session=self._session)
+
+        if wait:
+            job.wait()
         return job
 
 
@@ -149,6 +158,8 @@ class Job(Model):
 
     target = StringField(null=True)
     procedure = StringField(null=True)
+
+    content = StringField()
     options = DictField()
     params = DictField()
 

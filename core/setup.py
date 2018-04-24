@@ -13,6 +13,7 @@ setup(
         'gevent >= 1.2, < 1.3',
         'greenlet >= 0.4, < 0.5',
         'gunicorn >= 19, < 20',
+        'jinja2 >= 2.10, < 2.11',
         'mongoengine >= 0.15, < 0.16',
         'pymongo >= 3.6, < 3.7',
     ],

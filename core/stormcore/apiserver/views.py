@@ -2,20 +2,23 @@ import json
 import time
 from datetime import datetime
 
+import jinja2.sandbox
+
 import pymongo.cursor
 from pymongo.errors import OperationFailure
 
 from django.http import Http404, HttpResponse, StreamingHttpResponse
 from django.views.generic import View
 
-from rest_framework import status
+from rest_framework import status, mixins
 from rest_framework.decorators import detail_route
 from rest_framework.exceptions import APIException
 from rest_framework.response import Response
 
 from mongoengine import DoesNotExist, MultipleObjectsReturned
 
-from rest_framework_mongoengine.viewsets import ModelViewSet
+from rest_framework_mongoengine.viewsets import (
+    ModelViewSet, ReadOnlyModelViewSet)
 
 from stormcore.apiserver.models import (
     Agent,
@@ -36,9 +39,9 @@ from stormcore.apiserver.serializers import (
     GroupAddRemoveMembersSerializer,
     GroupSerializer,
     JobCompleteSerializer,
-    JobCreateSerializer,
     JobHandleSerializer,
     JobSerializer,
+    ProcedureExecSerializer,
     ProcedureSerializer,
     ResourceSerializer,
 )
@@ -82,7 +85,14 @@ def _resolve_references(model, query):
     return query
 
 
-def query_filter(request, queryset):
+def query_filter(query, queryset):
+    if query:
+        query = _resolve_references(queryset._document, query)
+        queryset = queryset.filter(__raw__=query)
+    return queryset
+
+
+def request_query_filter(request, queryset):
     """Apply the filter specified with the 'q' parameter, if any."""
     query_string = request.GET.get('q')
 
@@ -97,9 +107,7 @@ def query_filter(request, queryset):
             detail = {'q': ['Query must be a dictionary']}
             raise MalformedQueryError(detail=detail)
 
-        query = _resolve_references(queryset._document, query)
-
-        queryset = queryset.filter(__raw__=query)
+        queryset = query_filter(query, queryset)
 
         try:
             # Execute the queryset in order to detect errors with the query
@@ -130,7 +138,7 @@ class QueryFilterMixin:
     def get_queryset(self):
         queryset = super().get_queryset()
         if self.request.method == 'GET' and self.get == self.list:
-            queryset = query_filter(self.request, queryset)
+            queryset = request_query_filter(self.request, queryset)
         return queryset
 
 
@@ -151,6 +159,12 @@ class LookupMixin:
 
 
 class StormViewSet(LookupMixin, QueryFilterMixin, ModelViewSet):
+
+    pass
+
+
+class StormReadOnlyViewSet(
+        LookupMixin, QueryFilterMixin, ReadOnlyModelViewSet):
 
     pass
 
@@ -191,7 +205,7 @@ class GroupViewSet(StormViewSet):
 
         if request.method == 'GET':
             queryset = group.members()
-            queryset = query_filter(self.request, queryset)
+            queryset = request_query_filter(self.request, queryset)
             serializer = ResourceSerializer(queryset, many=True)
             return Response(serializer.data)
 
@@ -223,21 +237,108 @@ class ApplicationViewSet(StormViewSet):
     serializer_class = ApplicationSerializer
 
 
+class JinjaQuerySet:
+
+    def __init__(self, queryset, serializer_class):
+        self._queryset = queryset
+        self._serializer_class = serializer_class
+
+    def _serialize(self, obj):
+        serializer = self._serializer_class(obj)
+        return serializer.data
+
+    def __len__(self):
+        return len(self._queryset)
+
+    def __iter__(self):
+        return (self._serialize(obj) for obj in self._queryset)
+
+    def __getitem__(self, index):
+        if isinstance(index, slice):
+            return JinjaQuerySet(
+                self._queryset[index],
+                self._serializer_class)
+        return self._serialize(self._queryset[index])
+
+    def filter(self, query):
+        return JinjaQuerySet(
+            query_filter(query, self._queryset),
+            self._serializer_class)
+
+
+class JinjaDocumentClass(JinjaQuerySet):
+
+    def get(self, id):
+        return self._serialize(self._queryset.lookup(id))
+
+
+class JinjaResources(JinjaDocumentClass):
+
+    def __init__(self):
+        super().__init__(Resource.objects.all(), ResourceSerializer)
+
+
+class JinjaGroups(JinjaDocumentClass):
+
+    def __init__(self):
+        super().__init__(Group.objects.all(), GroupSerializer)
+
+    def _serialize(self, obj):
+        data = super()._serialize(obj)
+        data['members'] = JinjaQuerySet(
+            obj.members(), ResourceSerializer)
+        return data
+
+
 class ProcedureViewSet(StormViewSet):
 
     queryset = Procedure.objects.all()
     serializer_class = ProcedureSerializer
 
+    @detail_route(methods=['POST'])
+    def exec(self, request, **kwargs):
+        procedure = self.get_object()
 
-class JobViewSet(StormViewSet):
+        serializer = ProcedureExecSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(
+                serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        merged_options = {
+            **procedure.options,
+            **serializer.validated_data['options']}
+        merged_params = {
+            **procedure.params,
+            **serializer.validated_data['params']}
+
+        env = jinja2.sandbox.SandboxedEnvironment(
+            extensions=['jinja2.ext.do'],
+            line_statement_prefix='%',
+            line_comment_prefix='##')
+        template = env.from_string(procedure.content)
+        template_params = {
+            'groups': JinjaGroups(),
+            'resources': JinjaResources(),
+            'target': JinjaResources()._serialize(
+                serializer.validated_data['target']),
+            **merged_params,
+        }
+        rendered_content = template.render(template_params)
+
+        job = serializer.save(
+            content=rendered_content,
+            options=merged_options,
+            params=merged_params,
+        )
+
+        serializer = JobSerializer(job)
+        return Response(serializer.data)
+
+
+class JobViewSet(mixins.DestroyModelMixin, StormReadOnlyViewSet):
 
     queryset = Job.objects.all()
-
-    def get_serializer_class(self):
-        if self.action == 'create':
-            return JobCreateSerializer
-        else:
-            return JobSerializer
+    serializer_class = JobSerializer
 
     @detail_route(methods=['POST'])
     def handle(self, request, **kwargs):

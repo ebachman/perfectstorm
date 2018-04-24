@@ -12,6 +12,7 @@ import re  # noqa: E402
 import shlex  # noqa: E402
 import subprocess  # noqa: E402
 import urllib.parse  # noqa: E402
+import yaml  # noqa: E402
 
 import requests  # noqa: E402
 
@@ -84,100 +85,34 @@ class SwarmMixin:
         super().__init__(*args, **kwargs)
 
 
-class DockerCommand(SwarmMixin):
-
-    ENVVAR_REGEX = re.compile(r'(?<!\$)\$(\w+|{[^}]*})')
-
-    def __init__(self, swarm, args):
-        super().__init__(swarm=swarm)
-
-        var = None
-        err = False
-
-        if isinstance(args, dict):
-            if len(args) == 1:
-                var, args = args.popitem()
-
-        if isinstance(args, str):
-            args = shlex.split(args)
-
-        if not isinstance(args, list):
-            err = True
-
-        if not err:
-            if var is not None and not isinstance(var, str):
-                err = True
-            if not all(isinstance(arg, str) for arg in args):
-                err = True
-
-        if err:
-            raise TypeError(
-                'args must be a string, a list of strings or a dictionary '
-                'containing a single item')
-
-        if len(args) < 1:
-            raise ValueError('Empty command')
-
-        self.var = var
-        self.cmd = args[0]
-        self.args = args[1:]
-
-    def expand_args(self, environ):
-        expanded_args = []
-
-        for arg in self.args:
-            expanded = ''
-
-            while arg:
-                match = self.ENVVAR_REGEX.search(arg)
-                if match is None:
-                    expanded += arg
-                    break
-                start, end = match.span()
-                expanded += arg[:start]
-                var = match.group(1)
-                if var[0] == '{':
-                    var = var[1:-1]
-                expanded += environ.get(var, '')
-                arg = arg[end+1:]
-
-            expanded_args.append(expanded)
-
-        return expanded_args
-
-    def run(self, environ=None):
-        if environ is None:
-            environ = {}
-
-        args = ['docker', '--host', self.swarm.address, self.cmd]
-        args += self.expand_args(environ)
-        process = subprocess.run(
-            args, input=b'', check=True, stdout=subprocess.PIPE)
-        output = process.stdout.decode().strip()
-
-        if self.var is not None:
-            environ[self.var] = output
-
-        return output
-
-
 class SwarmProcedureRunner(SwarmMixin, ProcedureRunner):
 
-    def prepare(self):
-        super().prepare()
+    def run(self):
+        for args in self.list_commands():
+            self.run_command(args)
 
-        commands = self.procedure.content.get('run', [])
+    def list_commands(self):
+        commands = yaml.load(self.job.content)
         if not isinstance(commands, list):
             raise StormValidationError(
-                'run is expected to be a list of commands')
+                'expected a list of commands')
 
-        self.commands = [
-            DockerCommand(self.swarm, item) for item in commands]
+        result = []
 
-    def run(self):
-        environ = dict(self.job.params)
-        for command in self.commands:
-            command.run(environ)
+        for args in commands:
+            if isinstance(args, str):
+                args = shlex.split(args)
+            if (not isinstance(args, list) or
+                    not all(isinstance(arg, str) for arg in args)):
+                raise StormValidationError(
+                    'each command must be a string or a list of strings')
+            result.append(args)
+
+        return result
+
+    def run_command(self, args):
+        args = ['docker', '--host', self.swarm.address, *args]
+        subprocess.run(args, input=b'', check=True)
 
 
 class SwarmProcedureExecutor(
