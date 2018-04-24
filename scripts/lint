@@ -4,7 +4,7 @@ set -e
 
 cd "$(dirname "$(readlink -f "$0")")"/..
 
-dirs="cli core docs executors lib tests"
+dirs="cli core docs lib swarm tests"
 scripts="$(grep -rl '^#!/usr/bin/env python3' $dirs)"
 
 flake8 $dirs $scripts "$@"
