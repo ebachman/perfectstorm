@@ -292,6 +292,7 @@ class NameMixin:
 
     meta = {
         'indexes': ['name'],
+        'ordering': ['name'],
         'lookup_fields': ['name'],
     }
 
@@ -305,6 +306,7 @@ class TypeMixin:
 
     meta = {
         'indexes': ['type'],
+        'ordering': ['type'],
     }
 
 
@@ -391,6 +393,7 @@ class Resource(TypeMixin, StormDocument):
             'status',
             'health',
         ],
+        'ordering': ['type', 'names'],
         'lookup_fields': ['names'],
     }
 
