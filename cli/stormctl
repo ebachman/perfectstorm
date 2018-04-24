@@ -33,7 +33,15 @@ def _model_representer(dumper, obj):
     return dumper.represent_dict(items)
 
 
+def _str_representer(dumper, obj):
+    scalar = dumper.represent_str(obj)
+    if '\n' in obj:
+        scalar.style = '|'
+    return scalar
+
+
 yaml.add_multi_representer(Model, _model_representer)
+yaml.add_representer(str, _str_representer)
 
 
 def yaml_load(arg):
