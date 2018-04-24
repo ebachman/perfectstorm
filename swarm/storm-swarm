@@ -309,7 +309,8 @@ class SwarmNodeLabelingExecutor(
     # XXX   the label will be applied again, then removed, and so on...
 
     def get_labeling(self):
-        labels = collections.defaultdict(list)
+        resources = {}
+        labels = collections.defaultdict(dict)
 
         named_groups = Group.objects.filter(name={'$exists': True})
 
@@ -319,8 +320,10 @@ class SwarmNodeLabelingExecutor(
                 owner=self.agent.id,
             )
 
-            for res in relevant_members:
-                labels[res.id].append(group.name)
+            for resource in relevant_members:
+                labels[resource.id]['storm-grouped'] = 'yes'
+                labels[resource.id]['storm-group-' + group.name] = 'yes'
+                resources[resource.id] = resource
 
         # Get all the resources that have 'storm-grouped' label, but that
         # do not belong to any group. Those will have their label removed.
@@ -331,10 +334,23 @@ class SwarmNodeLabelingExecutor(
             'snapshot.Spec.Labels.storm-grouped': {'$exists': True},
         })
 
-        for res in extra_labels:
-            labels[res.id] = []
+        for resource in extra_labels:
+            labels[resource.id] = {}
+            resources[resource.id] = resource
 
-        return labels
+        return [
+            (resources[res_id], res_labels)
+            for res_id, res_labels in labels.items()
+            if self.labels_changed(resources[res_id], res_labels)
+        ]
+
+    def labels_changed(self, resource, new_labels):
+        old_labels = resource.snapshot['Spec']['Labels']
+        old_labels = {
+            key: value for key, value in old_labels.items()
+            if key.startswith('storm-group')
+        }
+        return old_labels != new_labels
 
     def poll_jobs(self):
         event_filter = events.EventFilter([
@@ -353,39 +369,31 @@ class SwarmNodeLabelingExecutor(
                 next(stream)
 
         return [
-            functools.partial(self.assign_labels, res_id, group_names)
-            for res_id, group_names in labeling.items()
+            functools.partial(self.assign_labels, *args)
+            for args in labeling
         ]
 
-    def assign_labels(self, res_id, group_names):
-        res = Resource.objects.get(res_id)
-
-        spec = res.snapshot['Spec']
-        labels = spec['Labels']
+    def assign_labels(self, resource, labels):
+        spec = resource.snapshot['Spec']
+        old_labels = spec['Labels']
 
         new_labels = {
-            key: value for key, value in labels.items()
+            key: value for key, value in old_labels.items()
             if not key.startswith('storm-group')
         }
-
-        if group_names:
-            new_labels['storm-grouped'] = 'yes'
-            for name in group_names:
-                new_labels['storm-group-' + name] = 'yes'
-
-        if labels == new_labels:
-            return
+        new_labels.update(labels)
 
         spec['Labels'] = new_labels
 
-        if res.type == 'swarm-service':
+        if resource.type == 'swarm-service':
             update_type = 'services'
-        elif res.type == 'swarm-node':
+        elif resource.type == 'swarm-node':
             update_type = 'nodes'
         else:
-            raise RuntimeError(res.type)
-        update_id = urllib.parse.quote(res.snapshot['ID'])
-        update_version = res.snapshot['Version']['Index']
+            raise RuntimeError(resource.type)
+
+        update_id = urllib.parse.quote(resource.snapshot['ID'])
+        update_version = resource.snapshot['Version']['Index']
 
         self.swarm.post(
             '{}/{}/update'.format(update_type, update_id),
