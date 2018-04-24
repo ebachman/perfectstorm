@@ -18,7 +18,8 @@ import requests  # noqa: E402
 
 from stormlib import Agent, Resource, Group, events  # noqa: E402
 from stormlib.cli import AgentClient  # noqa: E402
-from stormlib.exceptions import StormValidationError  # noqa: E402
+from stormlib.exceptions import (  # noqa: E402
+    StormBadRequestError, StormValidationError)
 from stormlib.executors import (  # noqa: E402
     PollingExecutor,
     AgentExecutorMixin,
@@ -245,6 +246,24 @@ class SwarmTaskProbe(SwarmMixin, DiscoveryProbe):
             status=self.get_task_status(data),
             health='healthy',
         )
+
+    def save_resource(self, resource):
+        try:
+            resource.save()
+        except StormBadRequestError:
+            # It can happen that some tasks have a ServiceID field, but
+            # the corresponding service has been deleted. This situation
+            # may occur, for example, after deleing a service: the service
+            # itself is gone, but its tasks still need to be removed.
+            #
+            # In such situation, the Storm API Server will complain that
+            # 'parent' does not reference a Resource and will refuse to
+            # save the task with a StormBadRequestError. For this reason,
+            # we try again, this time unsetting the 'parent' field.
+            if resource.parent is None:
+                raise
+            resource.parent = None
+            resource.save()
 
 
 class SwarmNodeProbe(SwarmMixin, DiscoveryProbe):

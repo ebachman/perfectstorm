@@ -29,6 +29,12 @@ class DiscoveryProbe(metaclass=abc.ABCMeta):
     def model_resource(self, resource_data):
         raise NotImplementedError
 
+    def save_resource(self, resource):
+        resource.save()
+
+    def delete_resource(self, resource):
+        resource.save()
+
 
 class DiscoveryExecutor(AgentExecutorMixin, PollingExecutor):
 
@@ -103,7 +109,8 @@ class DiscoveryExecutor(AgentExecutorMixin, PollingExecutor):
 
     def resource_created(self, resource_type, resource_id, resource_data):
         obj = self.model_resource(resource_type, resource_id, resource_data)
-        obj.save()
+        probe = self.probes[resource_type]
+        probe.save_resource(obj)
 
     def resource_updated(self, resource_type, resource_id, resource_data):
         obj = self.model_resource(resource_type, resource_id, resource_data)
@@ -111,7 +118,8 @@ class DiscoveryExecutor(AgentExecutorMixin, PollingExecutor):
         # be created
         if obj.id is None:
             obj.id = resource_id
-        obj.save()
+        probe = self.probes[resource_type]
+        probe.save_resource(obj)
 
     def model_resource(self, resource_type, resource_id, resource_data):
         probe = self.probes[resource_type]
@@ -121,5 +129,10 @@ class DiscoveryExecutor(AgentExecutorMixin, PollingExecutor):
         obj.snapshot = resource_data
         return obj
 
+    def save_resource(self, obj):
+        obj.save()
+
     def resource_deleted(self, resource_type, resource_id, resource_data):
-        Resource(id=resource_id).delete()
+        obj = Resource(id=resource_id)
+        probe = self.probes[resource_type]
+        probe.delete_resource(obj)
