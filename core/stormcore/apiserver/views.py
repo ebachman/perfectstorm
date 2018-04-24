@@ -302,7 +302,10 @@ class ProcedureViewSet(StormViewSet):
         env = jinja2.sandbox.SandboxedEnvironment(
             extensions=['jinja2.ext.do'],
             line_statement_prefix='%',
-            line_comment_prefix='##')
+            line_comment_prefix='##',
+            trim_blocks=True,
+            lstrip_blocks=True,
+        )
         template = env.from_string(procedure.content)
         template_params = {
             'groups': JinjaGroups(),
