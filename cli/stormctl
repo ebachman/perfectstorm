@@ -737,6 +737,7 @@ class ProcedureExecCommand(SingleEntityCommand):
             target=client.options.target,
             options=dict(client.options.options),
             params=dict(client.options.params),
+            wait=False,
         )
 
         if not client.options.detach:
