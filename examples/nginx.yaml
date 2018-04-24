@@ -1,7 +1,8 @@
 - group:
     name: nginx
     query:
-      type: swarm-task
+      type:
+        $in: [swarm-service, swarm-task]
       image:
         $regex: '^library/nginx:'
 
