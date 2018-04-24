@@ -30,6 +30,27 @@ from stormlib.executors import (  # noqa: E402
 )
 
 
+IMAGE_REGEX = re.compile(
+    r'^(?:([^/:@]+)/)?([^/:@]+)(?::([^/:@]+))?(?:@([^/@]+))?$')
+
+
+def canonical_image_name(image):
+    match = IMAGE_REGEX.match(image)
+    repository, name, tag, digest = match.groups()
+
+    if not repository:
+        repository = 'library'
+    if not tag:
+        tag = 'latest'
+
+    image = '{}/{}:{}'.format(repository, name, tag)
+
+    if digest:
+        image += '@' + digest
+
+    return image
+
+
 class Swarm:
 
     def __init__(self, address):
@@ -211,15 +232,14 @@ class SwarmServiceProbe(SwarmMixin, DiscoveryProbe):
                 data['Spec']['Name'],
                 data['ID'],
             ],
+            image=canonical_image_name(
+                data['Spec']['TaskTemplate']['ContainerSpec']['Image']),
             status='running',
             health='healthy',
         )
 
 
 class SwarmTaskProbe(SwarmMixin, DiscoveryProbe):
-
-    IMAGE_REGEX = re.compile(
-        r'^(?:([^/:@]+)/)?([^/:@]+)(?::([^/:@]+))?(?:@([^/@]+))?$')
 
     resource_type = 'swarm-task'
 
@@ -261,20 +281,7 @@ class SwarmTaskProbe(SwarmMixin, DiscoveryProbe):
         return names
 
     def get_task_image(self, data):
-        match = self.IMAGE_REGEX.match(data['Spec']['ContainerSpec']['Image'])
-        repository, name, tag, digest = match.groups()
-
-        if not repository:
-            repository = 'library'
-        if not tag:
-            tag = 'latest'
-
-        image = '{}/{}:{}'.format(repository, name, tag)
-
-        if digest:
-            image += '@' + digest
-
-        return image
+        return canonical_image_name(data['Spec']['ContainerSpec']['Image'])
 
     def get_task_status(self, data):
         docker2storm_status = {
