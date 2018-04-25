@@ -1,3 +1,5 @@
+import copy
+
 from mongoengine import (
     EmbeddedDocument,
     EmbeddedDocumentField,
@@ -9,7 +11,8 @@ from mongoengine import (
 )
 
 from stormcore.apiserver.models.base import (
-    StormDocument, NameMixin, EscapedDictField, StormReferenceField)
+    StormDocument, NameMixin, EscapedDictField, StormReferenceField,
+    prepare_user_query)
 from stormcore.apiserver.models.resources import Resource
 
 
@@ -43,7 +46,8 @@ class Group(NameMixin, StormDocument):
     }
 
     def members(self, filter=None):
-        query = self.query
+        query = copy.deepcopy(self.query)
+        prepare_user_query(Resource, query)
 
         if self.include:
             cond = {'_id': {'$in': self.include}}
