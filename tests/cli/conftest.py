@@ -5,7 +5,7 @@ import pytest
 
 
 @pytest.fixture(scope='session', autouse=True)
-def require_stormctl(request, api_session):
+def require_stormctl():
     """Skip the execution of tests if stormctl is not in $PATH."""
     for path in os.get_exec_path():
         name = os.path.join(path, 'stormctl')

@@ -4,12 +4,12 @@ from multiprocessing import Process, Barrier, Queue
 
 import pytest
 
-from stormlib import Group, Procedure, Job
+from stormlib import Procedure, Job
 from stormlib.exceptions import StormConflictError
 
 from .create import BaseTestCreateWithAgent
-from .samples import create_agent
-from .stubs import IDENTIFIER, PLACEHOLDER, random_name
+from .samples import create_agent, create_procedure, delete_on_exit
+from .stubs import IDENTIFIER, PLACEHOLDER
 
 
 class TestCreate(BaseTestCreateWithAgent):
@@ -66,23 +66,6 @@ class TestCreate(BaseTestCreateWithAgent):
 
 
 class TestJobs:
-
-    @pytest.fixture()
-    def procedure(self, request, agent):
-        procedure = Procedure(
-            type='test',
-            name=random_name(),
-            content='{{ x }} + {{ y }} = {{ x + y }}',
-            options={'i': 1, 'j': 2, 'k': 3},
-            params={'x': 1, 'y': 2, 'z': 3},
-        )
-        procedure.save()
-        assert procedure.id is not None
-
-        yield procedure
-
-        if not request.config.getoption('--no-cleanup'):
-            procedure.delete()
 
     def test_lifecycle(self, agent, procedure, resource):
         job = procedure.exec(target=resource.id, wait=False)
@@ -198,10 +181,8 @@ class TestJobs:
 class TestSubscriptions:
 
     @pytest.fixture()
-    def procedure(self, request, agent):
-        procedure = Procedure(
-            type='test',
-            name=random_name(),
+    def procedure(self):
+        procedure = create_procedure(
             content=textwrap.dedent('''\
                 Type: {{ event.event_type }}
                 Entity Type: {{ event.entity_type }}
@@ -209,37 +190,20 @@ class TestSubscriptions:
                 Entity Names: {{ event.entity_names }}
                 '''),
         )
-        procedure.save()
-        assert procedure.id is not None
 
-        yield procedure
+        with delete_on_exit(procedure):
+            yield procedure
 
-        if not request.config.getoption('--no-cleanup'):
-            procedure.delete()
-
-    @pytest.fixture()
-    def group(self, request, random_resources):
-        group = Group(
-            name=random_name(),
-            query={'type': 'alpha'},
-        )
-        group.save()
-
-        yield group
-
-        if not request.config.getoption('--no-cleanup'):
-            group.delete()
-
-    def test_subscriptions(self, procedure, random_resources, group):
+    def test_subscriptions(self, procedure, random_resources, alpha_group):
         subscription = procedure.attach(
-            group=group.id,
+            group=alpha_group.id,
             target=random_resources[0].id,
         )
         assert subscription.id is not None
         assert not Job.objects.filter(procedure=procedure.id)
 
         # Trigger an update
-        resource = group.members()[0]
+        resource = alpha_group.members()[0]
         resource.save()
 
         # As a consequence of the update, a new job should have been

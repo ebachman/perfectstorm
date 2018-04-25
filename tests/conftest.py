@@ -25,10 +25,13 @@ def api_session(request):
 def cleanup(request):
     from stormlib import (
         Agent, Application, Group, Procedure, Subscription, Job)
+    from . import samples
+
+    samples.CLEANUP = not request.config.getoption('--no-cleanup')
 
     yield
 
-    if request.config.getoption('--no-cleanup'):
+    if not samples.CLEANUP:
         return
 
     delete = []
@@ -47,29 +50,42 @@ def cleanup(request):
 
 
 @pytest.fixture()
-def agent(request):
-    from .samples import create_agent
-    agent = create_agent()
-
-    yield agent
-
-    if request.config.getoption('--no-cleanup'):
-        return
-    agent.delete()
+def agent():
+    from .samples import create_agent, delete_on_exit
+    with delete_on_exit(create_agent()) as agent:
+        yield agent
 
 
 @pytest.fixture(scope='session')
 def random_resources():
-    from .samples import create_random_resources
-    return create_random_resources()
+    from .samples import create_random_resources, delete_on_exit
+    with delete_on_exit(create_random_resources()) as resources:
+        yield resources
 
 
 @pytest.fixture()
 def resource(agent):
-    from .samples import create_random_resources
+    from .samples import create_random_resources, delete_on_exit
     lst = create_random_resources(
         count=1,
         min_running_percent=0,
         min_healthy_percent=0,
+        owner=agent.id,
     )
-    return lst[0]
+    with delete_on_exit(lst):
+        yield lst[0]
+
+
+@pytest.fixture()
+def alpha_group():
+    from .samples import create_group, delete_on_exit
+    group = create_group(query={'type': 'alpha'})
+    with delete_on_exit(group) as group:
+        yield group
+
+
+@pytest.fixture()
+def procedure():
+    from .samples import create_procedure, delete_on_exit
+    with delete_on_exit(create_procedure()) as procedure:
+        yield procedure

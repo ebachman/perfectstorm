@@ -4,6 +4,7 @@ from stormlib import Resource
 from stormlib.exceptions import StormObjectNotFound
 
 from .create import BaseTestCreateWithAgent
+from .samples import create_agent, delete_on_exit
 from .stubs import IDENTIFIER, PLACEHOLDER, random_name
 
 
@@ -187,38 +188,40 @@ class TestUpdate:
         assert resource.id is not None
         return resource
 
-    def test_update_type(self, resource):
+    def test_update_type(self, agent, resource):
         assert resource.type == 'test'
-        assert_resources_count(1, type='test')
-        assert_resources_count(0, type='dummy')
+        assert_resources_count(1, owner=agent.id, type='test')
+        assert_resources_count(0, owner=agent.id, type='dummy')
 
         resource.type = 'dummy'
         resource.save()
 
         assert resource.type == 'dummy'
-        assert_resources_count(0, type='test')
-        assert_resources_count(1, type='dummy')
+        assert_resources_count(0, owner=agent.id, type='test')
+        assert_resources_count(1, owner=agent.id, type='dummy')
 
-    def test_update_names(self, resource):
+    def test_update_names(self, agent, resource):
         assert resource.names == ['abc', 'def']
-        assert_resources_count(1, names='abc')
-        assert_resources_count(1, names='def')
-        assert_resources_count(0, names='ghi')
+        assert_resources_count(1, owner=agent.id, names='abc')
+        assert_resources_count(1, owner=agent.id, names='def')
+        assert_resources_count(0, owner=agent.id, names='ghi')
 
         resource.names = ['ghi']
         resource.save()
 
         assert resource.names == ['ghi']
-        assert_resources_count(0, names='abc')
-        assert_resources_count(0, names='def')
-        assert_resources_count(1, names='ghi')
+        assert_resources_count(0, owner=agent.id, names='abc')
+        assert_resources_count(0, owner=agent.id, names='def')
+        assert_resources_count(1, owner=agent.id, names='ghi')
 
 
 class TestRetrieval:
 
-    @pytest.fixture()
-    def resources(self, agent):
+    @pytest.fixture(scope='module')
+    def resources(self):
         resources = []
+
+        agent = create_agent()
 
         for type_label in 'xyz':
             for num in 'abc':
@@ -238,7 +241,9 @@ class TestRetrieval:
 
                 resources.append(resource)
 
-        return resources
+        with delete_on_exit(agent):
+            with delete_on_exit(resources):
+                yield resources
 
     def test_retrieve_by_id(self, resources):
         for res in resources:

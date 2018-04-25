@@ -1,14 +1,9 @@
 import random
 
-from stormlib import Agent, Resource
+from stormlib import Agent, Resource, Group, Procedure
+from stormlib.exceptions import StormObjectNotFound
 
 from .stubs import random_name
-
-
-def create_agent():
-    agent = Agent(type='test')
-    agent.save()
-    return agent
 
 
 RESOURCE_TYPES = [
@@ -59,7 +54,50 @@ RESOURCE_HEALTHS = [
 ]
 
 
-def make_resource(**kwargs):
+CLEANUP = True
+
+
+class delete_on_exit:
+
+    def __init__(self, obj, deletefunc=None):
+        self.obj = obj
+        self.deletefunc = deletefunc
+
+    def __enter__(self):
+        return self.obj
+
+    def __exit__(self, exc_type, exc_value, exc_tb):
+        if not CLEANUP:
+            return
+
+        try:
+            if self.deletefunc is not None:
+                self.deletefunc(self.obj)
+                return
+            if hasattr(self.obj, 'delete'):
+                self.obj.delete()
+                return
+        except StormObjectNotFound:
+            return
+
+        if hasattr(self.obj, '__iter__'):
+            for item in self.obj:
+                try:
+                    item.delete()
+                except StormObjectNotFound:
+                    pass
+            return
+
+        raise RuntimeError('object has no delete() method')
+
+
+def create_agent():
+    agent = Agent(type='test')
+    agent.save()
+    return agent
+
+
+def create_resource(**kwargs):
     resource = Resource(
         type=random.choice(RESOURCE_TYPES),
         names=[random_name() for i in range(random.randrange(6))],
@@ -73,8 +111,10 @@ def make_resource(**kwargs):
 
 
 def create_random_resources(
-        count=64, min_running_percent=0.6, min_healthy_percent=0.8):
-    agent = create_agent()
+        count=64, min_running_percent=0.6, min_healthy_percent=0.8,
+        owner=None):
+    if owner is None:
+        owner = create_agent().id
 
     resources = []
 
@@ -94,7 +134,39 @@ def create_random_resources(
         else:
             health = random.choice(RESOURCE_HEALTHS)
 
-        res = make_resource(owner=agent.id, status=status, health=health)
+        res = create_resource(owner=owner, status=status, health=health)
         resources.append(res)
 
     return resources
+
+
+def create_group(query=None, include=None, exclude=None):
+    group = Group(
+        name=random_name(),
+        query=query,
+        include=include,
+        exclude=exclude,
+    )
+    group.save()
+    return group
+
+
+def create_procedure(content=None, options=None, params=None):
+    if content is None:
+        content = '{{ x }} + {{ y }} = {{ x + y }}'
+    if options is None:
+        options = {'i': 1, 'j': 2, 'k': 3}
+    if params is None:
+        params = {'x': 1, 'y': 2, 'z': 3}
+
+    procedure = Procedure(
+        type='test',
+        name=random_name(),
+        content=content,
+        options=options,
+        params=params,
+    )
+
+    procedure.save()
+
+    return procedure

@@ -42,7 +42,7 @@ def assert_event_in(expected_event, events_queue, wait=False):
 
 def test_latest(agent):
     # Create a resource
-    res = samples.make_resource(owner=agent.id)
+    res = samples.create_resource(owner=agent.id)
 
     # Update it
     res.image = 'scrambled_egg'
@@ -113,7 +113,7 @@ def collect_realtime_events(*args, **kwargs):
 
 def test_stream(agent):
     with collect_realtime_events() as events:
-        res = samples.make_resource(owner=agent.id)
+        res = samples.create_resource(owner=agent.id)
         entity = Entity('resource', res.id, res.names)
         assert_event_in(Event(ANY, 'created', entity), events, wait=True)
 
@@ -126,7 +126,7 @@ def test_stream(agent):
 
 
 def test_stream_start(agent):
-    res = samples.make_resource(owner=agent.id)
+    res = samples.create_resource(owner=agent.id)
     entity = Entity('resource', res.id, res.names)
     event = Event(ANY, 'created', entity)
 

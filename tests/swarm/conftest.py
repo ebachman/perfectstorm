@@ -33,13 +33,11 @@ def swarm_cluster():
 
 
 @pytest.fixture(scope='session')
-def swarm_service(request, swarm_cluster):
+def swarm_service(swarm_cluster):
+    from ..samples import delete_on_exit
     from .samples import create_service, delete_service
 
     resource = create_service(swarm_cluster)
-    yield resource
 
-    if request.config.getoption('--no-cleanup'):
-        return
-
-    delete_service(resource)
+    with delete_on_exit(resource, delete_service):
+        yield resource
