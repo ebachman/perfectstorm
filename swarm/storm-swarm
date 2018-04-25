@@ -478,6 +478,9 @@ class SwarmClient(AgentClient):
             '-H', '--host', metavar='HOST[:PORT]', required=True,
             help='Docker daemon to connect to')
         parser.add_argument(
+            '-f', '--force-discovery', action='store_true',
+            help='Ignore resources already discovered')
+        parser.add_argument(
             '-p', '--with-procedure-runner', action='store_true',
             help='Run Swarm procedures submitted to this cluster')
         parser.add_argument(
@@ -501,7 +504,9 @@ class SwarmClient(AgentClient):
 
     def run(self):
         jobs = [
-            SwarmDiscoveryExecutor(swarm=self.swarm, agent=self.agent),
+            SwarmDiscoveryExecutor(
+                swarm=self.swarm, agent=self.agent,
+                delete_stored=self.options.force_discovery),
         ]
 
         if self.options.with_procedure_runner:

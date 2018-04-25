@@ -38,8 +38,9 @@ class DiscoveryProbe(metaclass=abc.ABCMeta):
 
 class DiscoveryExecutor(AgentExecutorMixin, PollingExecutor):
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, delete_stored=False, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.delete_stored = delete_stored
         self.snapshots = None
         self.probes = {
             probe.resource_type: probe
@@ -78,7 +79,14 @@ class DiscoveryExecutor(AgentExecutorMixin, PollingExecutor):
                     data)
 
     def get_stored_snapshots(self):
-        for res in Resource.objects.filter(owner=self.agent.id):
+        queryset = Resource.objects.filter(owner=self.agent.id)
+
+        if self.delete_stored:
+            for res in queryset:
+                res.delete()
+            return
+
+        for res in queryset:
             try:
                 probe = self.probes[res.type]
             except KeyError:
