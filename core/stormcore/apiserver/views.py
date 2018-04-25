@@ -26,6 +26,7 @@ from stormcore.apiserver.models import (
     Job,
     Procedure,
     Resource,
+    Subscription,
     cleanup_expired_agents,
     user_query_filter,
 )
@@ -39,9 +40,11 @@ from stormcore.apiserver.serializers import (
     JobCompleteSerializer,
     JobHandleSerializer,
     JobSerializer,
+    ProcedureAttachSerializer,
     ProcedureExecSerializer,
     ProcedureSerializer,
     ResourceSerializer,
+    SubscriptionSerializer,
 )
 
 
@@ -213,6 +216,20 @@ class ProcedureViewSet(StormViewSet):
         serializer = JobSerializer(job)
         return Response(serializer.data)
 
+    @detail_route(methods=['POST'])
+    def attach(self, request, **kwargs):
+        procedure = self.get_object()
+
+        serializer = ProcedureAttachSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(
+                serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        subscription = serializer.save(procedure=procedure)
+
+        serializer = SubscriptionSerializer(subscription)
+        return Response(serializer.data)
+
 
 class JobViewSet(mixins.DestroyModelMixin, StormReadOnlyViewSet):
 
@@ -286,6 +303,12 @@ class JobViewSet(mixins.DestroyModelMixin, StormReadOnlyViewSet):
         job.save()
 
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class SubscriptionViewSet(mixins.DestroyModelMixin, StormReadOnlyViewSet):
+
+    queryset = Subscription.objects.all()
+    serializer_class = SubscriptionSerializer
 
 
 class EventView(View):

@@ -13,6 +13,7 @@ __all__ = [
     'Job',
     'Procedure',
     'Resource',
+    'Subscription',
 ]
 
 
@@ -133,6 +134,24 @@ class Procedure(Model):
             job.wait()
         return job
 
+    def attach(self, group, target, options=None, params=None):
+        if options is None:
+            options = {}
+        if params is None:
+            params = {}
+
+        url = self.url / 'attach'
+
+        data = {
+            'group': group,
+            'target': target,
+            'options': options,
+            'params': params,
+        }
+
+        data = self._session.post(url, json=data)
+        return Subscription(data, session=self._session)
+
 
 class JobHandler:
 
@@ -240,3 +259,15 @@ class Job(Model):
     def raise_on_error(self):
         if self.status == 'error':
             raise StormJobError(self.id, job=self, details=self.result)
+
+
+class Subscription(Model):
+
+    _path = 'v1/subscriptions'
+
+    group = StringField(null=True)
+    procedure = StringField(null=True)
+
+    target = StringField(null=True)
+    options = DictField()
+    params = DictField()

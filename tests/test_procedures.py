@@ -1,9 +1,10 @@
+import textwrap
 import time
 from multiprocessing import Process, Barrier, Queue
 
 import pytest
 
-from stormlib import Procedure
+from stormlib import Group, Procedure, Job
 from stormlib.exceptions import StormConflictError
 
 from .create import BaseTestCreateWithAgent
@@ -67,7 +68,7 @@ class TestCreate(BaseTestCreateWithAgent):
 class TestJobs:
 
     @pytest.fixture()
-    def procedure(self, agent):
+    def procedure(self, request, agent):
         procedure = Procedure(
             type='test',
             name=random_name(),
@@ -77,7 +78,11 @@ class TestJobs:
         )
         procedure.save()
         assert procedure.id is not None
-        return procedure
+
+        yield procedure
+
+        if not request.config.getoption('--no-cleanup'):
+            procedure.delete()
 
     def test_lifecycle(self, agent, procedure, resource):
         job = procedure.exec(target=resource.id, wait=False)
@@ -188,3 +193,72 @@ class TestJobs:
     def test_content_rendering(self, agent, procedure, resource):
         job = procedure.exec(target=resource.id, wait=False)
         assert job.content == '1 + 2 = 3'
+
+
+class TestSubscriptions:
+
+    @pytest.fixture()
+    def procedure(self, request, agent):
+        procedure = Procedure(
+            type='test',
+            name=random_name(),
+            content=textwrap.dedent('''\
+                Type: {{ event.event_type }}
+                Entity Type: {{ event.entity_type }}
+                Entity ID: {{ event.entity_id }}
+                Entity Names: {{ event.entity_names }}
+                '''),
+        )
+        procedure.save()
+        assert procedure.id is not None
+
+        yield procedure
+
+        if not request.config.getoption('--no-cleanup'):
+            procedure.delete()
+
+    @pytest.fixture()
+    def group(self, request, random_resources):
+        group = Group(
+            name=random_name(),
+            query={'type': 'alpha'},
+        )
+        group.save()
+
+        yield group
+
+        if not request.config.getoption('--no-cleanup'):
+            group.delete()
+
+    def test_subscriptions(self, procedure, random_resources, group):
+        subscription = procedure.attach(
+            group=group.id,
+            target=random_resources[0].id,
+        )
+        assert subscription.id is not None
+        assert not Job.objects.filter(procedure=procedure.id)
+
+        # Trigger an update
+        resource = group.members()[0]
+        resource.save()
+
+        # As a consequence of the update, a new job should have been
+        # triggered. Wait for it to appear (for no more than 10 seconds)
+        max_time = time.time() + 10
+
+        while time.time() < max_time:
+            if Job.objects.filter(procedure=procedure.id):
+                break
+            time.sleep(.5)
+
+        assert len(Job.objects.filter(procedure=procedure.id)) == 1
+
+        job = Job.objects.get(procedure=procedure.id)
+        expected_content = textwrap.dedent('''\
+            Type: updated
+            Entity Type: resource
+            Entity ID: {}
+            Entity Names: {}
+            '''.format(resource.id, resource.names))
+
+        assert job.content == expected_content.strip()

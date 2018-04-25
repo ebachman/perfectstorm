@@ -24,6 +24,7 @@ from stormcore.apiserver.models import (
     Resource,
     Service,
     ServiceReference,
+    Subscription,
 )
 
 
@@ -251,6 +252,32 @@ class ProcedureExecSerializer(Serializer):
     options = EscapedDictField()
     params = EscapedDictField()
 
+
+class ProcedureAttachSerializer(DocumentSerializer):
+
+    group = StormReferenceField(Group)
+
+    target = StormReferenceField(Resource)
+    options = EscapedDictField()
+    params = EscapedDictField()
+
+    class Meta:
+        model = Subscription
+        fields = ('group', 'target', 'options', 'params')
+
+
+class SubscriptionSerializer(DocumentSerializer):
+
+    group = StormReferenceField(Group)
+    procedure = StormReferenceField(Procedure)
+
+    target = StormReferenceField(Resource)
+    options = EscapedDictField()
+    params = EscapedDictField()
+
+    class Meta:
+        model = Subscription
+        fields = ('id', 'group', 'procedure', 'target', 'options', 'params')
 
 
 class JobSerializer(DocumentSerializer):

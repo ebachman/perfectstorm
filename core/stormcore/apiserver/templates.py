@@ -1,9 +1,9 @@
 import jinja2.sandbox
 
 from stormcore.apiserver.models import (
-    Resource, Group, user_query_filter)
+    Resource, Group, Event, user_query_filter)
 from stormcore.apiserver.serializers import (
-    ResourceSerializer, GroupSerializer)
+    ResourceSerializer, GroupSerializer, EventSerializer)
 
 
 def render(template, target, params):
@@ -79,3 +79,9 @@ class JinjaGroups(JinjaDocumentClass):
         data['members'] = JinjaQuerySet(
             obj.members(), ResourceSerializer)
         return data
+
+
+class JinjaEvents(JinjaDocumentClass):
+
+    def __init__(self):
+        super().__init__(Event.objects.all(), EventSerializer)

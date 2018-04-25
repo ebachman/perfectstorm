@@ -12,6 +12,7 @@ router.register(r'resources', views.ResourceViewSet)
 router.register(r'groups', views.GroupViewSet)
 router.register(r'apps', views.ApplicationViewSet)
 router.register(r'procedures', views.ProcedureViewSet)
+router.register(r'subscriptions', views.SubscriptionViewSet)
 router.register(r'jobs', views.JobViewSet)
 
 urlpatterns = [

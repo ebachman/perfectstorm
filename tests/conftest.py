@@ -23,7 +23,8 @@ def api_session(request):
 
 @pytest.fixture(scope='session', autouse=True)
 def cleanup(request):
-    from stormlib import Agent, Application, Group, Procedure, Job
+    from stormlib import (
+        Agent, Application, Group, Procedure, Subscription, Job)
 
     yield
 
@@ -36,6 +37,7 @@ def cleanup(request):
     delete.extend(Group.objects.all())
     delete.extend(Application.objects.all())
     delete.extend(Procedure.objects.all())
+    delete.extend(Subscription.objects.all())
     delete.extend(Job.objects.all())
     # No need to delete resources: they will be deleted
     # automatically when deleting the agents

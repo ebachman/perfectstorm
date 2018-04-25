@@ -8,6 +8,7 @@ from .models import (
     Job,
     Procedure,
     Resource,
+    Subscription,
 )
 from .session import connect
 
@@ -20,6 +21,7 @@ __all__ = [
     'Job',
     'Procedure',
     'Resource',
+    'Subscription',
     'connect',
 ]
 

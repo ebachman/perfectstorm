@@ -17,7 +17,8 @@ from stormcore.apiserver.models.agents import Agent, cleanup_expired_agents
 from stormcore.apiserver.models.events import Event
 from stormcore.apiserver.models.groups import (
     Group, Service, ServiceReference, ComponentLink, Application)
-from stormcore.apiserver.models.procedures import Procedure, Job
+from stormcore.apiserver.models.procedures import (
+    Procedure, Subscription, Job)
 from stormcore.apiserver.models.resources import Resource
 
 
@@ -39,6 +40,7 @@ __all__ = [
     'StormIdField',
     'StormQuerySet',
     'StormReferenceField',
+    'Subscription',
     'TypeMixin',
     'b62uuid_encode',
     'b62uuid_new',
