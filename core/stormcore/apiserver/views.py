@@ -1,4 +1,3 @@
-import copy
 import json
 import time
 from datetime import datetime
@@ -29,8 +28,8 @@ from stormcore.apiserver.models import (
     Job,
     Procedure,
     Resource,
-    StormReferenceField,
     cleanup_expired_agents,
+    user_query_filter,
 )
 
 from stormcore.apiserver.serializers import (
@@ -48,36 +47,6 @@ from stormcore.apiserver.serializers import (
 )
 
 
-def prepare_query(query, model):
-    if 'id' in query:
-        query['_id'] = query.pop('id')
-
-    for key, value in query.items():
-        if key.startswith('$'):
-            if isinstance(value, list):
-                for item in value:
-                    prepare_query(item, model)
-            else:
-                prepare_query(value, model)
-        else:
-            field = model._fields.get(key)
-            if isinstance(field, StormReferenceField):
-                doctype = field.document_type
-                try:
-                    document = doctype.objects.only('id').lookup(value)
-                except Exception:
-                    continue
-                query[key] = document.id
-
-
-def query_filter(query, queryset):
-    if query:
-        query = copy.deepcopy(query)
-        prepare_query(query, queryset._document)
-        queryset = queryset.filter(__raw__=query)
-    return queryset
-
-
 def request_query_filter(request, queryset):
     """Apply the filter specified with the 'q' parameter, if any."""
     query_string = request.GET.get('q')
@@ -93,7 +62,7 @@ def request_query_filter(request, queryset):
             detail = {'q': ['Query must be a dictionary']}
             raise MalformedQueryError(detail=detail)
 
-        queryset = query_filter(query, queryset)
+        queryset = user_query_filter(query, queryset)
 
         try:
             # Execute the queryset in order to detect errors with the query
@@ -248,7 +217,7 @@ class JinjaQuerySet:
 
     def __call__(self, query):
         return JinjaQuerySet(
-            query_filter(query, self._queryset),
+            user_query_filter(query, self._queryset),
             self._serializer_class)
 
 
