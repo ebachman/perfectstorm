@@ -59,6 +59,8 @@ class TestCreate(BaseTestCreateWithAgent):
         'owner': PLACEHOLDER,
         'names': [],
         'parent': None,
+        'cluster': None,
+        'host': None,
         'image': None,
         'status': 'unknown',
         'health': 'unknown',

@@ -84,13 +84,15 @@ class ResourceSerializer(DocumentSerializer):
 
     owner = StormReferenceField(Agent)
     parent = StormReferenceField(Resource, allow_null=True, required=False)
+    cluster = StormReferenceField(Resource, allow_null=True, required=False)
+    host = StormReferenceField(Resource, allow_null=True, required=False)
     snapshot = EscapedDictField()
 
     class Meta:
         model = Resource
         fields = (
-            'id', 'type', 'names', 'owner', 'parent', 'image',
-            'status', 'health', 'snapshot')
+            'id', 'type', 'names', 'owner', 'parent', 'cluster', 'host',
+            'image', 'status', 'health', 'snapshot')
 
 
 class GroupSerializer(DocumentSerializer):

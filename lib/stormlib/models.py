@@ -38,8 +38,10 @@ class Resource(Model):
     names = ListField(StringField())
     owner = StringField()
 
-    image = StringField(null=True)
     parent = StringField(null=True)
+    cluster = StringField(null=True)
+    host = StringField(null=True)
+    image = StringField(null=True)
 
     status = StringField(default='unknown')
     health = StringField(default='unknown')

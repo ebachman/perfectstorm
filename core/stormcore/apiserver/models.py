@@ -376,6 +376,8 @@ class Resource(TypeMixin, StormDocument):
     owner = StormReferenceField(Agent, required=True)
 
     parent = StormReferenceField('Resource', null=True)
+    cluster = StormReferenceField('Resource', null=True)
+    host = StormReferenceField('Resource', null=True)
     image = StringField(min_length=1, null=True)
 
     status = StringField(

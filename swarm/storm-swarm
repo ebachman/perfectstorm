@@ -173,6 +173,7 @@ class SwarmServiceProbe(SwarmMixin, DiscoveryProbe):
     def model_resource(self, data):
         return Resource(
             parent=self.swarm.cluster_id,
+            cluster=self.swarm.cluster_id,
             names=self.get_service_names(data),
             image=self.get_service_image(data),
             status='running',
@@ -270,6 +271,8 @@ class SwarmTaskProbe(SwarmMixin, DiscoveryProbe):
     def model_resource(self, data):
         return Resource(
             parent=data['ServiceID'],
+            cluster=self.swarm.cluster_id,
+            host=data.get('NodeID'),
             names=self.get_task_names(data),
             image=self.get_task_image(data),
             status=self.get_task_status(data),
@@ -334,6 +337,7 @@ class SwarmNodeProbe(SwarmMixin, DiscoveryProbe):
     def model_resource(self, data):
         return Resource(
             parent=self.swarm.cluster_id,
+            cluster=self.swarm.cluster_id,
             names=[
                 data['Description']['Hostname'],
                 data['ID'],
@@ -348,9 +352,9 @@ class SwarmDiscoveryExecutor(SwarmMixin, DiscoveryExecutor):
     def get_probes(self):
         return [
             SwarmClusterProbe(self.swarm),
+            SwarmNodeProbe(self.swarm),
             SwarmServiceProbe(self.swarm),
             SwarmTaskProbe(self, self.swarm),
-            SwarmNodeProbe(self.swarm),
         ]
 
 

@@ -42,7 +42,8 @@
     content: |
       % set nodes = resources({
           'type': 'swarm-node',
-          'parent': target.id,
+          'cluster': target.id,
+          'status': 'running',
         })
 
       % for i in range(COUNT)
@@ -67,21 +68,23 @@
     name: consul-agents
     type: swarm
     content: |
-      % set server_tasks = groups['consul-servers'].members({'type': 'swarm-task'})
-      % set server_node_ids = server_tasks|map(attribute='snapshot.NodeID')|list
-      % set server_nodes = resources({
-          'type': 'swarm-node',
-          'parent': target.id,
-          'snapshot.ID': {'$in': server_node_ids},
+      % set server_tasks = groups['consul-servers'].members({
+          'type': 'swarm-task',
+          'cluster': target.id,
         })
+      % set server_node_ids = server_tasks|map(attribute='host')|list
+      % set server_nodes = resources({'id': {'$in': server_node_ids}})
 
-      % set consul_tasks = groups.consul.members({'type': 'swarm-task'})
-      % set consul_node_ids = consul_tasks|map(attribute='snapshot.NodeID')|list
-
+      % set consul_tasks = groups.consul.members({
+          'type': 'swarm-task',
+          'cluster': target.id,
+        })
+      % set consul_node_ids = consul_tasks|map(attribute='host')|list
       % set nodes_without_consul = resources({
           'type': 'swarm-node',
-          'parent': target.id,
-          'snapshot.ID': {'$nin': consul_node_ids},
+          'cluster': target.id,
+          'status': 'running',
+          'id': {'$nin': consul_node_ids},
         })
 
       % for node in nodes_without_consul
@@ -101,8 +104,8 @@
     type: swarm
     content: |
       % for service in groups.consul.members({
-            'type': 'swarm-service',
-            'parent': target.id,
-          })
+          'type': 'swarm-service',
+          'cluster': target.id,
+        })
         - service rm {{ service.snapshot.ID }}
       % endfor
