@@ -16,6 +16,31 @@ class Procedure(NameMixin, TypeMixin, StormDocument):
         'id_prefix': 'prc-',
     }
 
+    def exec(self, target, options=None, params=None):
+        from stormcore.apiserver import templates
+
+        if params is None:
+            params = {}
+        if options is None:
+            options = {}
+
+        merged_options = {**self.options, **options}
+        merged_params = {**self.params, **params}
+
+        rendered_content = templates.render(
+            self.content, target, merged_params)
+
+        job = Job(
+            target=target,
+            procedure=self,
+            content=rendered_content,
+            options=merged_options,
+            params=merged_params,
+        )
+
+        job.save()
+        return job
+
 
 class Job(StormDocument):
 

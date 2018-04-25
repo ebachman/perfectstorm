@@ -245,16 +245,12 @@ class ProcedureSerializer(DocumentSerializer):
         }
 
 
-class ProcedureExecSerializer(DocumentSerializer):
+class ProcedureExecSerializer(Serializer):
 
     target = StormReferenceField(Resource)
-
     options = EscapedDictField()
     params = EscapedDictField()
 
-    class Meta:
-        model = Job
-        fields = ('target', 'options', 'params')
 
 
 class JobSerializer(DocumentSerializer):
