@@ -36,7 +36,7 @@ def test_service_discovery(swarm_cluster, swarm_service):
     assert len(swarm_service.names) == 2
     service_name, service_id = swarm_service.names
     assert swarm_service.status == 'running'
-    assert swarm_service.health == 'healthy'
+    assert swarm_service.health == 'unknown'
 
     # Check the task created by us
     task = Resource.objects.get(parent=swarm_service.id)
@@ -46,7 +46,7 @@ def test_service_discovery(swarm_cluster, swarm_service):
     assert (service_name + '.1') in task.names
     assert task.snapshot['ID'] in task.names
     assert task.status == 'running'
-    assert task.health == 'healthy'
+    assert task.health == 'unknown'
     assert (
         task.image == 'library/nginx:latest' or
         task.image.startswith('library/nginx:latest@'))
