@@ -40,17 +40,17 @@ def canonical_image_name(image):
     match = IMAGE_REGEX.match(image)
     repository, name, tag, digest = match.groups()
 
-    if not repository:
-        repository = 'library'
-    if not tag:
-        tag = 'latest'
+    parts = []
 
-    image = '{}/{}:{}'.format(repository, name, tag)
+    if repository and repository != 'library':
+        parts += [repository, '/']
+
+    parts += [name, ':', tag or 'latest']
 
     if digest:
-        image += '@' + digest
+        parts += ['@', digest]
 
-    return image
+    return ''.join(parts)
 
 
 class Swarm:

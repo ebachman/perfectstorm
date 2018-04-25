@@ -4,7 +4,7 @@
       type:
         $in: [swarm-service, swarm-task]
       image:
-        $regex: '^library/hello-world:'
+        $regex: '^hello-world:'
 
 - application:
     name: hello-world

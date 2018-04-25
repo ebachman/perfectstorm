@@ -4,7 +4,7 @@
       type:
         $in: [swarm-service, swarm-task]
       image:
-        $regex: '^library/nginx:'
+        $regex: '^nginx:'
 
 - application:
     name: nginx
@@ -27,6 +27,9 @@
     name: nginx-destroy
     type: swarm
     content: |
-      % for service in groups.nginx.members({'type': 'swarm-service', 'parent': target.id})
+      % for service in groups.nginx.members({
+          'type': 'swarm-service',
+          'cluster': target.id,
+        })
         - service rm {{ service.snapshot.ID }}
       % endfor

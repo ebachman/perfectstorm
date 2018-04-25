@@ -4,7 +4,7 @@
       type:
         $in: [swarm-service, swarm-task]
       image:
-        $regex: '^library/consul:'
+        $regex: '^consul:'
 
 - group:
     name: consul-servers
@@ -12,7 +12,7 @@
       type:
         $in: [swarm-service, swarm-task]
       image:
-        $regex: '^library/consul:'
+        $regex: '^consul:'
       $or:
         - { snapshot.Spec.ContainerSpec.Args: '-server' }
         - { snapshot.Spec.TaskTemplate.ContainerSpec.Args: '-server' }
@@ -23,7 +23,7 @@
       type:
         $in: [swarm-service, swarm-task]
       image:
-        $regex: '^library/consul:'
+        $regex: '^consul:'
       snapshot.Spec.ContainerSpec.Args:
         $ne: '-server'
       snapshot.Spec.TaskTemplate.ContainerSpec.Args:

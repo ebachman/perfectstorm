@@ -48,8 +48,8 @@ def test_service_discovery(swarm_cluster, swarm_service):
     assert task.status == 'running'
     assert task.health == 'unknown'
     assert (
-        task.image == 'library/nginx:latest' or
-        task.image.startswith('library/nginx:latest@'))
+        task.image == 'nginx:latest' or
+        task.image.startswith('nginx:latest@'))
 
 
 def test_node_discovery(swarm_cluster):
