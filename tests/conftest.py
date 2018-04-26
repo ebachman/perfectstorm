@@ -28,8 +28,7 @@ def api_session(request):
 def cleanup(request):
     global CLEANUP_ENABLED
 
-    from stormlib import (
-        Agent, Application, Group, Procedure, Subscription, Job)
+    from stormlib import Agent, Application, Group, Procedure
     from . import samples
 
     CLEANUP_ENABLED = not request.config.getoption('--no-cleanup')
@@ -42,13 +41,13 @@ def cleanup(request):
     delete = []
 
     delete.extend(Agent.objects.filter(type='test'))
-    delete.extend(Group.objects.all())
     delete.extend(Application.objects.all())
+    delete.extend(Group.objects.all())
     delete.extend(Procedure.objects.all())
-    delete.extend(Subscription.objects.all())
-    delete.extend(Job.objects.all())
-    # No need to delete resources: they will be deleted
-    # automatically when deleting the agents
+
+    # No need to delete resources: they will be deleted automatically when
+    # deleting the agents. Also no need to delete jobs and subscriptions:
+    # they will be deleted when resources and procedures are deleted.
 
     for obj in delete:
         obj.delete()

@@ -1,8 +1,9 @@
 import collections
 from datetime import datetime
 
-from mongoengine import StringField, DateTimeField
+from mongoengine import StringField, DateTimeField, signals
 
+from stormcore.apiserver.models.agents import Agent
 from stormcore.apiserver.models.base import (
     StormDocument, StormQuerySet, TypeMixin, NameMixin,
     StormReferenceField, EscapedDictField)
@@ -104,7 +105,7 @@ class Job(StormDocument):
         ('error', 'Error'),
     )
 
-    owner = StormReferenceField('Agent', null=True)
+    owner = StormReferenceField(Agent, null=True, reverse_delete_rule=0)
 
     target = StormReferenceField('Resource')
     procedure = StormReferenceField(Procedure)
@@ -128,5 +129,16 @@ class Job(StormDocument):
         'ordering': ['created'],
     }
 
-    def __str__(self):
-        return str(self.pk)
+
+def restore_jobs(sender, document, **kwargs):
+    orphaned_jobs = Job.objects.filter(owner=document)
+    orphaned_jobs.update(status='pending', owner=None)
+
+
+def restore_jobs_if_owner_offline(sender, document, **kwargs):
+    if document.status == 'offline':
+        restore_jobs(sender, document, **kwargs)
+
+
+signals.pre_delete.connect(restore_jobs, sender=Agent)
+signals.pre_save.connect(restore_jobs_if_owner_offline, sender=Agent)

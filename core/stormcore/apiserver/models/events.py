@@ -61,14 +61,14 @@ class Event(Document):
     }
 
 
-def on_save(sender, document, created=False, **kwargs):
+def record_save(sender, document, created=False, **kwargs):
     event_type = 'created' if created else 'updated'
     Event.objects.record_event(event_type, document)
 
 
-def on_delete(sender, document, **kwargs):
+def record_delete(sender, document, **kwargs):
     Event.objects.record_event('deleted', document)
 
 
-signals.post_save.connect(on_save)
-signals.post_delete.connect(on_delete)
+signals.post_save.connect(record_save)
+signals.post_delete.connect(record_delete)

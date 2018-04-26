@@ -6,6 +6,7 @@ from mongoengine import (
     EmbeddedDocumentListField,
     IntField,
     ListField,
+    PULL,
     StringField,
     ValidationError,
 )
@@ -38,8 +39,10 @@ class Group(NameMixin, StormDocument):
     services = EmbeddedDocumentListField(Service)
 
     query = EscapedDictField(required=True)
-    include = ListField(StormReferenceField(Resource))
-    exclude = ListField(StormReferenceField(Resource))
+    include = ListField(StormReferenceField(
+        Resource, reverse_delete_rule=PULL))
+    exclude = ListField(StormReferenceField(
+        Resource, reverse_delete_rule=PULL))
 
     meta = {
         'id_prefix': 'grp-',
@@ -76,7 +79,7 @@ class Group(NameMixin, StormDocument):
 
 class ServiceReference(EmbeddedDocument):
 
-    group = StormReferenceField(Group, required=True)
+    group = StormReferenceField(Group, required=True, reverse_delete_rule=0)
     service_name = StringField(min_length=1, required=True)
 
     @property
@@ -97,7 +100,8 @@ class ServiceReference(EmbeddedDocument):
 
 class ComponentLink(EmbeddedDocument):
 
-    from_component = StormReferenceField(Group, required=True)
+    from_component = StormReferenceField(
+        Group, required=True, reverse_delete_rule=0)
     to_service = EmbeddedDocumentField(ServiceReference, required=True)
 
     def clean(self):

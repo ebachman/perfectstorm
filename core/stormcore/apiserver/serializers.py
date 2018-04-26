@@ -300,7 +300,18 @@ class JobSerializer(DocumentSerializer):
 
 class JobHandleSerializer(Serializer):
 
+    default_error_messages = {
+        'owner_offline': 'Agent is offline',
+    }
+
     owner = StormReferenceField(Agent)
+
+    def validate(self, data):
+        owner = data['owner']
+        owner.reload()
+        if owner.status == 'offline':
+            self.fail('owner_offline')
+        return data
 
 
 class JobCompleteSerializer(Serializer):

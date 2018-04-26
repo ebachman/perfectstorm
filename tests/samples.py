@@ -90,7 +90,7 @@ class delete_on_exit:
 
 
 def create_agent():
-    agent = Agent(type='test')
+    agent = Agent(type='test', status='online')
     agent.save()
     return agent
 

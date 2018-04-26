@@ -3,7 +3,7 @@ import functools
 import re
 import uuid
 
-from mongoengine import Document, QuerySet, IntField, StringField
+from mongoengine import Document, QuerySet, IntField, StringField, CASCADE
 from mongoengine.base import get_document
 from mongoengine.base.metaclasses import MetaDict
 from mongoengine.fields import BaseField
@@ -176,8 +176,9 @@ class StormReferenceField(BaseField):
     # TODO Consider creating a lazy version of this class, in a way
     # TODO similar to LazyReferenceField.
 
-    def __init__(self, document_type, **kwargs):
+    def __init__(self, document_type, reverse_delete_rule=CASCADE, **kwargs):
         self._document_type = document_type
+        self.reverse_delete_rule = reverse_delete_rule
         super().__init__(**kwargs)
 
     @property
@@ -205,6 +206,10 @@ class StormReferenceField(BaseField):
         if isinstance(value, Document):
             value = value.id
         return value
+
+    def prepare_query_value(self, op, value):
+        value = super().prepare_query_value(op, value)
+        return self.to_mongo(value)
 
 
 class AutoIncrementField(IntField):
