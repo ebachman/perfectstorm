@@ -1,6 +1,9 @@
 import pytest
 
 
+CLEANUP_ENABLED = True
+
+
 def pytest_addoption(parser):
     parser.addoption(
         '--api-server-host', action='store', default='127.0.0.1',
@@ -23,15 +26,17 @@ def api_session(request):
 
 @pytest.fixture(scope='session', autouse=True)
 def cleanup(request):
+    global CLEANUP_ENABLED
+
     from stormlib import (
         Agent, Application, Group, Procedure, Subscription, Job)
     from . import samples
 
-    samples.CLEANUP = not request.config.getoption('--no-cleanup')
+    CLEANUP_ENABLED = not request.config.getoption('--no-cleanup')
 
-    yield
+    yield CLEANUP_ENABLED
 
-    if not samples.CLEANUP:
+    if not CLEANUP_ENABLED:
         return
 
     delete = []

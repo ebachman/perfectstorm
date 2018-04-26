@@ -3,6 +3,7 @@ import random
 from stormlib import Agent, Resource, Group, Procedure
 from stormlib.exceptions import StormObjectNotFound
 
+from . import conftest
 from .stubs import random_name
 
 
@@ -54,9 +55,6 @@ RESOURCE_HEALTHS = [
 ]
 
 
-CLEANUP = True
-
-
 class delete_on_exit:
 
     def __init__(self, obj, deletefunc=None):
@@ -67,7 +65,7 @@ class delete_on_exit:
         return self.obj
 
     def __exit__(self, exc_type, exc_value, exc_tb):
-        if not CLEANUP:
+        if not conftest.CLEANUP_ENABLED:
             return
 
         try:
