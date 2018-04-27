@@ -1,3 +1,5 @@
+import json
+
 import jinja2.sandbox
 
 from stormcore.apiserver.models import (
@@ -5,6 +7,9 @@ from stormcore.apiserver.models import (
 from stormcore.apiserver.serializers import (
     ResourceSerializer, GroupSerializer, EventSerializer)
 
+
+def tojson_filter(value):
+    return json.dumps(value)
 
 def render(template, target, params):
     env = jinja2.sandbox.SandboxedEnvironment(
@@ -14,6 +19,8 @@ def render(template, target, params):
         trim_blocks=True,
         lstrip_blocks=True,
     )
+
+    env.filters['tojson'] = tojson_filter
 
     template_params = {
         'groups': JinjaGroups(),
