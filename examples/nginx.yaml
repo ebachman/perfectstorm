@@ -31,5 +31,5 @@
           'type': 'swarm-service',
           'cluster': target.id,
         })
-        - service rm {{ service.snapshot.ID }}
+        - service rm {{ service.snapshot.ID|shquote }}
       % endfor

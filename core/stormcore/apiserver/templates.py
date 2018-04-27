@@ -12,6 +12,10 @@ from stormcore.apiserver.serializers import (
 def tojson_filter(value):
     return json.dumps(value)
 
+def shquote_filter(value):
+    return shlex.quote(value)
+
+
 def render(template, target, params):
     env = jinja2.sandbox.SandboxedEnvironment(
         autoescape=False,
@@ -23,6 +27,7 @@ def render(template, target, params):
     )
 
     env.filters['tojson'] = tojson_filter
+    env.filters['shquote'] = shquote_filter
 
     template_params = {
         'groups': JinjaGroups(),
