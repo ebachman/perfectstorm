@@ -137,6 +137,7 @@ class AgentViewSet(StormViewSet):
     @detail_route(methods=['POST'])
     def heartbeat(self, request, **kwargs):
         agent = self.get_object()
+        agent.status = 'online'
         agent.heartbeat = datetime.now()
         agent.save()
         return Response(status=status.HTTP_204_NO_CONTENT)
