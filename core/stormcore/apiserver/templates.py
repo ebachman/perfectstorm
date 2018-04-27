@@ -1,4 +1,5 @@
 import json
+import shlex
 
 import jinja2.sandbox
 
@@ -13,6 +14,7 @@ def tojson_filter(value):
 
 def render(template, target, params):
     env = jinja2.sandbox.SandboxedEnvironment(
+        autoescape=False,
         extensions=['jinja2.ext.do'],
         line_statement_prefix='%',
         line_comment_prefix='##',
