@@ -12,6 +12,7 @@ from stormcore.apiserver.serializers import (
 def tojson_filter(value):
     return json.dumps(value)
 
+
 def shquote_filter(value):
     return shlex.quote(value)
 
@@ -83,16 +84,18 @@ class JinjaResources(JinjaDocumentClass):
         super().__init__(Resource.objects.all(), ResourceSerializer)
 
 
+class JinjaGroupSerializer:
+
+    def __init__(self, obj):
+        self.data = GroupSerializer(obj).data
+        self.data['members'] = JinjaQuerySet(
+            obj.members(), ResourceSerializer)
+
+
 class JinjaGroups(JinjaDocumentClass):
 
     def __init__(self):
-        super().__init__(Group.objects.all(), GroupSerializer)
-
-    def _serialize(self, obj):
-        data = super()._serialize(obj)
-        data['members'] = JinjaQuerySet(
-            obj.members(), ResourceSerializer)
-        return data
+        super().__init__(Group.objects.all(), JinjaGroupSerializer)
 
 
 class JinjaEvents(JinjaDocumentClass):
