@@ -230,34 +230,39 @@ class SwarmTaskProbe(SwarmMixin, DiscoveryProbe):
         # 'transitioning state' is used when state != desired_state, i.e.
         # when Swarm has to change from a state to another.
         status_map = {
-            'new': ('created', 'creating'),
-            'allocated': ('created', 'creating'),
-            'pending': ('starting', 'starting'),
-            'assigned': ('starting', 'starting'),
-            'accepted': ('starting', 'starting'),
-            'preparing': ('starting', 'starting'),
-            'ready': ('starting', 'starting'),
-            'starting': ('starting', 'starting'),
-            'running': ('running', 'starting'),
-            'complete': ('stopped', 'stopping'),
-            'shutdown': ('stopped', 'stopping'),
-            'failed': ('error', 'error'),
-            'rejected': ('error', 'error'),
-            'remove': ('stopped', 'stopping'),
-            'orphaned': ('error', 'error'),
+            'new': 'created',
+            'allocated': 'created',
+            'pending': 'starting',
+            'assigned': 'starting',
+            'accepted': 'starting',
+            'preparing': 'starting',
+            'ready': 'starting',
+            'starting': 'starting',
+            'running': 'running',
+            'complete': 'stopped',
+            'shutdown': 'stopped',
+            'failed': 'error',
+            'rejected': 'error',
+            'remove': 'stopped',
+            'orphaned': 'error',
         }
 
-        state = data['Status']['State']
-        desired_state = data['DesiredState']
-
-        if state not in status_map or desired_state not in status_map:
+        try:
+            status = status_map[data['Status']['State']]
+            desired_status = status_map[data['DesiredState']]
+        except KeyError:
             return 'unknown'
 
-        if state == desired_state:
-            return status_map[state][0]
-        if state in ('failed', 'rejected'):
-            return 'error'
-        return status_map[desired_state][1]
+        if status == desired_status or status == 'error':
+            return status
+
+        transitions = {
+            'created': 'creating',
+            'started': 'starting',
+            'stopped': 'stopping',
+        }
+
+        return transitions.get(desired_status, desired_status)
 
     def get_task_health(self, data):
         if ('Healthcheck' in data['Spec']['ContainerSpec'] and
