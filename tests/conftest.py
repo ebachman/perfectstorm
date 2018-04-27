@@ -27,9 +27,7 @@ def api_session(request):
 @pytest.fixture(scope='session', autouse=True)
 def cleanup(request):
     global CLEANUP_ENABLED
-
     from stormlib import Agent, Application, Group, Procedure
-    from . import samples
 
     CLEANUP_ENABLED = not request.config.getoption('--no-cleanup')
 
