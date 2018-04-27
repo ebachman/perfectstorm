@@ -21,7 +21,7 @@ class Entity(namedtuple('BaseEntity', 'type id names')):
             raise StormObjectNotFound(self.id)
 
         model_class = getattr(models, model_name)
-        self._obj = model_class.objects.retrieve(self.id)
+        self._obj = model_class.objects.get(self.id)
         return self._obj
 
 
