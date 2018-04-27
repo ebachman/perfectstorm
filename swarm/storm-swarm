@@ -6,11 +6,14 @@ gevent.monkey.patch_all()
 # on standard error
 gevent.get_hub().NOT_ERROR += (KeyboardInterrupt,)
 
+import argparse  # noqa: E402
 import collections  # noqa: E402
 import functools  # noqa: E402
+import json  # noqa: E402
 import re  # noqa: E402
 import shlex  # noqa: E402
 import subprocess  # noqa: E402
+import textwrap  # noqa: E402
 import urllib.parse  # noqa: E402
 import yaml  # noqa: E402
 
@@ -19,7 +22,7 @@ import requests  # noqa: E402
 from stormlib import Agent, Resource, Group, events  # noqa: E402
 from stormlib.cli import AgentClient  # noqa: E402
 from stormlib.exceptions import (  # noqa: E402
-    StormBadRequestError, StormValidationError)
+    StormBadRequestError, StormValidationError, StormObjectNotFound)
 from stormlib.executors import (  # noqa: E402
     PollingExecutor,
     AgentExecutorMixin,
@@ -86,6 +89,160 @@ class SwarmMixin:
         super().__init__(*args, **kwargs)
 
 
+class SwarmServiceExecEmulator(SwarmMixin):
+
+    SHELL_SCRIPT_TEMPLATE = textwrap.dedent('''\
+        post() {{
+          curl -s --unix-socket /var/run/docker.sock \\
+            -H 'Content-Type: application/json' \\
+            -d "$1" "http://localhost/$2"
+        }}
+        post {exec_data} "containers/{container_id}/exec"
+        exec_id=$(post {exec_data} "containers/{container_id}/exec" | \\
+            grep -Eo '\\<[0-9a-f]{{64}}\\>')
+        post {start_data} "exec/$exec_id/start"
+    ''').strip()
+
+    def __init__(self, swarm, args):
+        super().__init__(swarm)
+        self.parse_args(args)
+
+    def parse_args(self, args):
+        parser = argparse.ArgumentParser()
+
+        parser.add_argument('-d', '--detach', action='store_true')
+        parser.add_argument('-e', '--env', action='append')
+        parser.add_argument('--privileged', action='store_true')
+        parser.add_argument('-u', '--user')
+        parser.add_argument('-w', '--workdir')
+        parser.add_argument('task')
+        parser.add_argument('command')
+
+        try:
+            self.options, extra_args = parser.parse_known_args(args)
+        except SystemExit:
+            raise ValueError('invalid arguments: {!r}'.format(args))
+
+        self.options.args = extra_args
+
+        self.task = Resource.objects.get(
+            type='swarm-task',
+            names=self.options.task,
+            cluster=self.swarm.cluster_id)
+        self.node = Resource.objects.get(self.task.host)
+
+    def get_create_command(self):
+        container_id = (
+            self.task.snapshot['Status']['ContainerStatus']['ContainerID'])
+
+        exec_data = json.dumps({
+            'AttachStdin': False,
+            'AttachStdout': False,
+            'AttachStderr': False,
+            'Tty': False,
+            'Cmd': [
+                self.options.command,
+                *self.options.args,
+            ],
+            'Env': self.options.env,
+            'Privileged': self.options.privileged,
+            'User': self.options.user,
+            'WorkingDir': self.options.workdir,
+        })
+
+        start_data = json.dumps({
+            'Detach': self.options.detach,
+            'Tty': False,
+        })
+
+        shell_script = self.SHELL_SCRIPT_TEMPLATE.format(
+            container_id=shlex.quote(container_id),
+            exec_data=shlex.quote(exec_data),
+            start_data=shlex.quote(start_data),
+        )
+
+        return [
+            'docker',
+            '--host', self.swarm.address,
+            'service', 'create',
+            '--detach',
+            '--restart-condition', 'none',
+            '--constraint', 'node.id==' + self.node.snapshot['ID'],
+            '--mount',
+            'type=bind,src=/var/run/docker.sock,dst=/var/run/docker.sock',
+            '--label', 'storm-swarm-exec=yes',
+            '--label', 'storm-swarm-exec-task=' + self.options.task,
+            '--label', 'storm-swarm-exec-command=' + self.options.command,
+            'appropriate/curl',
+            'sh', '-euxc', shell_script,
+        ]
+
+    def get_remove_command(self, service_id):
+        return [
+            'docker',
+            '--host', self.swarm.address,
+            'service', 'rm', service_id,
+        ]
+
+    def run(self):
+        create_cmd = self.get_create_command()
+
+        with events.stream() as event_stream:
+            proc = subprocess.run(
+                create_cmd, input='', stdout=subprocess.PIPE,
+                universal_newlines=True, check=True)
+            service_id = proc.stdout.strip()
+            self.wait(service_id, event_stream)
+
+        rm_cmd = self.get_remove_command(service_id)
+        subprocess.run(rm_cmd, input=b'', check=True)
+
+    def wait(self, service_id, event_stream):
+        # Wait for the helper service to appear
+        event_filter = events.EventFilter([
+            events.EventMask('created', 'resource', None, [service_id]),
+        ])
+        event_stream = event_filter(event_stream)
+        for event in event_stream:
+            helper_service = event.entity.retrieve()
+            break
+
+        # Wait for the helper task to appear
+        event_filter.clear()
+        event_filter.register_all([
+            events.EventMask('created', 'resource'),
+            events.EventMask('updated', 'resource', helper_service.id),
+            events.EventMask('deleted', 'resource', helper_service.id),
+        ])
+        for event in event_stream:
+            try:
+                resource = event.entity.retrieve()
+            except StormObjectNotFound:
+                return
+            if (resource.type == 'swarm-task' and
+                    resource.parent == helper_service.id):
+                helper_task = resource
+                break
+
+        # Check if the task is complete
+        if helper_task.status in ('stopped', 'error'):
+            return
+
+        # Wait for the helper task to complete
+        event_filter.clear()
+        event_filter.register_all([
+            events.EventMask('updated', 'resource', helper_task.id),
+            events.EventMask('deleted', 'resource', helper_task.id),
+        ])
+        for event in event_stream:
+            try:
+                helper_task.reload()
+            except StormObjectNotFound:
+                return
+            if helper_task.status in ('stopped', 'error'):
+                return
+
+
 class SwarmProcedureRunner(SwarmMixin, ProcedureRunner):
 
     def run(self):
@@ -112,6 +269,10 @@ class SwarmProcedureRunner(SwarmMixin, ProcedureRunner):
         return result
 
     def run_command(self, args):
+        if args[:2] == ['service', 'exec']:
+            SwarmServiceExecEmulator(self.swarm, args[2:]).run()
+            return
+
         args = ['docker', '--host', self.swarm.address, *args]
         subprocess.run(args, input=b'', check=True)
 
