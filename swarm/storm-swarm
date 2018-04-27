@@ -422,15 +422,15 @@ class SwarmNodeLabelingExecutor(
         return old_labels != new_labels
 
     def poll_jobs(self):
-        event_filter = events.EventFilter([
-            events.EventMask(event_type='created', entity_type='resource'),
-            events.EventMask(event_type='updated', entity_type='resource'),
-            events.EventMask(event_type='created', entity_type='group'),
-            events.EventMask(event_type='updated', entity_type='group'),
-            events.EventMask(event_type='deleted', entity_type='group'),
-        ])
+        filters = [
+            'created:resource',
+            'updated:resource',
+            'created:group',
+            'updated:group',
+            'deleted:group',
+        ]
 
-        with event_filter(events.stream()) as stream:
+        with events.stream(filters) as stream:
             while True:
                 labeling = self.get_labeling()
                 if labeling:
