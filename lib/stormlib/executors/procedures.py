@@ -1,7 +1,10 @@
 import abc
+import logging
 
 from . import AgentExecutorMixin, PollingExecutor
 from .. import Job, events
+
+log = logging.getLogger(__name__)
 
 
 class ProcedureRunner:
@@ -15,19 +18,25 @@ class ProcedureRunner:
             try:
                 result = self.run()
             except Exception as exc:
-                self.fail(exc)
+                if not self.job.is_complete():
+                    self.exception(exc)
             else:
-                self.complete(result)
+                if not self.job.is_complete():
+                    self.complete(result)
 
     @abc.abstractmethod
     def run(self):
         raise NotImplementedError
 
-    def fail(self, exc):
-        self.job.fail(exc)
+    def complete(self, result):
+        self.job.complete(result)
 
-    def complete(self, exc):
-        self.job.complete(exc)
+    def fail(self, result):
+        self.job.fail(result)
+
+    def exception(self, exc):
+        self.job.exception(exc)
+        log.exception(exc)
 
 
 class ProcedureExecutor(AgentExecutorMixin, PollingExecutor):

@@ -125,10 +125,10 @@ class Session:
             except requests.exceptions.RequestException as exc:
                 raise self.wrap_exception(exc)
         except Exception as exc:
-            log.error('%s %s -> %s', method, url, type(exc).__name__)
+            log.debug('%s %s -> %s', method, url, type(exc).__name__)
             raise
 
-        log.info(
+        log.debug(
             '%s %s -> %s %s',
             method, url, response.status_code, response.reason)
 

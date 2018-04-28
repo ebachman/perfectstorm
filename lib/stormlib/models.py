@@ -168,7 +168,7 @@ class JobHandler:
         if exc_value is None:
             self.job.complete()
         else:
-            self.job.fail(exc_value)
+            self.job.exception(exc_value)
 
 
 class Job(Model):
@@ -216,22 +216,25 @@ class Job(Model):
         self.reload()
         return JobHandler(self)
 
-    def complete(self, result=None, status='done'):
+    def complete(self, result=None):
         if result is None:
             result = {}
         url = self.url / 'complete'
         self._session.post(url, json={'result': result})
         self.reload()
 
-    def fail(self, exc):
-        result = {
-            'error': ''.join(traceback.format_exception(
-                type(exc), exc, exc.__traceback__)),
-        }
-
+    def fail(self, result=None):
+        if result is None:
+            result = {}
         url = self.url / 'fail'
         self._session.post(url, json={'result': result})
         self.reload()
+
+    def exception(self, exc):
+        self.fail({
+            'error': ''.join(traceback.format_exception(
+                type(exc), exc, exc.__traceback__)),
+        })
 
     def wait(self, delete=True, raise_on_error=True):
         from . import events

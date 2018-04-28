@@ -7,6 +7,8 @@ try:
 except ImportError:
     gevent = None
 
+log = logging.getLogger(__package__)
+
 
 class BaseExecutor(metaclass=abc.ABCMeta):
 
@@ -44,7 +46,7 @@ class BaseExecutor(metaclass=abc.ABCMeta):
         if self.on_error_behavior == 'raise':
             raise exc
         elif self.on_error_behavior == 'log':
-            logging.getLogger('stormlib.executors').exception(exc)
+            log.exception(exc)
         else:
             raise RuntimeError(
                 'unknown on_error behavior: {!r}'.format(

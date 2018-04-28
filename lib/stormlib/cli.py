@@ -6,6 +6,25 @@ import sys
 from . import session
 
 
+class LogFormatter(logging.Formatter):
+
+    def format(self, record):
+        if record.levelno == logging.INFO:
+            record.levelprefix = ''
+        else:
+            record.levelprefix = record.levelname + ': '
+        return super().format(record)
+
+
+class LogLevelFilter(logging.Filter):
+
+    def __init__(self, stop_level):
+        self.stop_level = stop_level
+
+    def filter(self, record):
+        return record.levelno < self.stop_level
+
+
 class CommandLineClient(metaclass=abc.ABCMeta):
 
     def __init__(self, args=None):
@@ -62,32 +81,27 @@ class CommandLineClient(metaclass=abc.ABCMeta):
         session.connect(host, port)
 
     def setup_logging(self):
-        if not self.options.debug:
-            return
+        level = logging.DEBUG if self.options.debug else logging.INFO
 
-        logging.config.dictConfig({
-            'version': 1,
-            'disable_existing_loggers': False,
-            'formatters': {
-                'standard': {
-                    'format': '[%(levelname)s] %(message)s'
-                },
-            },
-            'handlers': {
-                'default': {
-                    'level': 'DEBUG',
-                    'formatter': 'standard',
-                    'class': 'logging.StreamHandler',
-                },
-            },
-            'loggers': {
-                'stormlib': {
-                    'handlers': ['default'],
-                    'level': 'DEBUG',
-                    'propagate': True
-                },
-            },
-        })
+        formatter = LogFormatter(fmt='%(levelprefix)s%(message)s')
+
+        out_handler = logging.StreamHandler(stream=sys.stdout)
+        out_handler.addFilter(LogLevelFilter(logging.WARNING))
+        out_handler.setFormatter(formatter)
+        out_handler.setLevel(level)
+
+        err_handler = logging.StreamHandler(stream=sys.stderr)
+        out_handler.setFormatter(formatter)
+        err_handler.setLevel(logging.WARNING)
+
+        loggers = getattr(self, 'configure_loggers', [])
+        loggers = ('stormlib', *loggers)
+
+        for logger_name in loggers:
+            logger = logging.getLogger(logger_name)
+            logger.setLevel(level)
+            logger.addHandler(out_handler)
+            logger.addHandler(err_handler)
 
 
 class AgentClient(CommandLineClient):

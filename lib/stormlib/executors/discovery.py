@@ -1,10 +1,12 @@
 import abc
 import collections
 import functools
+import logging
 
 from .. import Resource
 from .base import AgentExecutorMixin, PollingExecutor
 
+log = logging.getLogger(__name__)
 
 ResourceSnapshot = collections.namedtuple(
     'ResourceSnapshot', 'type internal_id data')
@@ -119,6 +121,7 @@ class DiscoveryExecutor(AgentExecutorMixin, PollingExecutor):
         obj = self.model_resource(resource_type, resource_id, resource_data)
         probe = self.probes[resource_type]
         probe.save_resource(obj)
+        log.debug('Resource discovered: %s %s', resource_type, resource_id)
 
     def resource_updated(self, resource_type, resource_id, resource_data):
         obj = self.model_resource(resource_type, resource_id, resource_data)
@@ -128,6 +131,7 @@ class DiscoveryExecutor(AgentExecutorMixin, PollingExecutor):
             obj.id = resource_id
         probe = self.probes[resource_type]
         probe.save_resource(obj)
+        log.debug('Resource updated: %s %s', resource_type, resource_id)
 
     def model_resource(self, resource_type, resource_id, resource_data):
         probe = self.probes[resource_type]
@@ -144,3 +148,4 @@ class DiscoveryExecutor(AgentExecutorMixin, PollingExecutor):
         obj = Resource(id=resource_id)
         probe = self.probes[resource_type]
         probe.delete_resource(obj)
+        log.debug('Resource deleted: %s %s', resource_type, resource_id)
