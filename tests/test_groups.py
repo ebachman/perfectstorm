@@ -100,7 +100,7 @@ class TestCreate(BaseTestCreate):
 @pytest.mark.parametrize('query, filterfunc', [
     (
         {},
-        lambda res: False
+        lambda res: False,
     ),
     (
         {'type': 'alpha'},
@@ -120,6 +120,21 @@ class TestCreate(BaseTestCreate):
     (
         {'image': {'$regex': 'nginx'}},
         lambda res: res.image is not None and 'nginx' in res.image,
+    ),
+
+    # Test queries with special characters
+
+    (
+        {'a.b': 'c'},
+        lambda res: False,
+    ),
+    (
+        {'a$b': 'c'},
+        lambda res: False,
+    ),
+    (
+        {'a\0b': 'c'},
+        lambda res: False,
     ),
 ])
 class TestMembers:

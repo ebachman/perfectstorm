@@ -48,6 +48,8 @@ def prepare_user_query(model, query):
     if 'id' in query:
         query['_id'] = query.pop('id')
 
+    remove_keys = []
+
     for key, value in query.items():
         if key.startswith('$'):
             if isinstance(value, list):
@@ -55,6 +57,8 @@ def prepare_user_query(model, query):
                     prepare_user_query(model, item)
             else:
                 prepare_user_query(model, value)
+        elif '\0' in key or '$' in key:
+            remove_keys.append(key)
         else:
             field = model._fields.get(key)
             if isinstance(field, StormReferenceField):
@@ -64,6 +68,9 @@ def prepare_user_query(model, query):
                 except Exception:
                     continue
                 query[key] = document.id
+
+    for key in remove_keys:
+        del query[key]
 
 
 def user_query_filter(query, queryset):
