@@ -292,7 +292,7 @@ class JobSerializer(DocumentSerializer):
     class Meta:
         model = Job
         fields = (
-            'id', 'owner', 'target', 'procedure',
+            'id', 'type', 'owner', 'target', 'procedure',
             'content', 'options', 'params',
             'status', 'result', 'created',
         )

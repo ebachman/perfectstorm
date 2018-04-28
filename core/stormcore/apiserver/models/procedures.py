@@ -36,6 +36,7 @@ class Procedure(NameMixin, TypeMixin, StormDocument):
             self.content, target, merged_params)
 
         job = Job(
+            type=self.type,
             target=target,
             procedure=self,
             content=rendered_content,
@@ -96,7 +97,7 @@ class Subscription(StormDocument):
         )
 
 
-class Job(StormDocument):
+class Job(TypeMixin, StormDocument):
 
     STATUS_CHOICES = (
         ('pending', 'Pending'),

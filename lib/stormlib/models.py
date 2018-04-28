@@ -175,6 +175,7 @@ class Job(Model):
 
     _path = 'v1/jobs'
 
+    type = StringField()
     owner = StringField(null=True, read_only=True)
 
     target = StringField(null=True)

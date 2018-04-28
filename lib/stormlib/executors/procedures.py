@@ -41,6 +41,11 @@ class ProcedureRunner:
 
 class ProcedureExecutor(AgentExecutorMixin, PollingExecutor):
 
+    @property
+    @abc.abstractmethod
+    def procedure_type(self):
+        raise NotImplementedError
+
     def get_job_event_filter(self):
         return events.EventFilter([
             events.EventMask(event_type='created', entity_type='job'),
@@ -48,7 +53,10 @@ class ProcedureExecutor(AgentExecutorMixin, PollingExecutor):
         ])
 
     def get_pending_jobs(self):
-        return Job.objects.filter(status='pending')
+        return Job.objects.filter(
+            type=self.procedure_type,
+            status='pending',
+        )
 
     def poll_jobs(self):
         event_filter = self.get_job_event_filter()
