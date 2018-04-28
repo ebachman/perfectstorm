@@ -33,3 +33,16 @@
         })
         - service rm {{ service.snapshot.ID|shquote }}
       % endfor
+
+- procedure:
+    name: nginx-change
+    type: swarm
+    content: |
+      % for task in groups.nginx.members({
+          'type': 'swarm-task',
+          'cluster': target.id,
+        })
+        - |
+          service exec -d {{ task.snapshot.ID|shquote }}
+          bash -c 'echo "Today'"'"'s lucky number is: <b>$RANDOM</b>!" > /usr/share/nginx/html/index.html'
+      % endfor
