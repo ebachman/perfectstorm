@@ -590,6 +590,135 @@ class ImportCommand(TopLevelCommand):
         raise ValueError(entity_name)
 
 
+class StatusCommand(TopLevelCommand):
+
+    command_name = 'status'
+
+    RESOURCE_STATUSES = [
+        ('running', 'GREEN'),
+        ('unhealthy', 'RED'),
+        ('error', 'RED'),
+        ('creating', 'CYAN'),
+        ('created', 'CYAN'),
+        ('starting', 'CYAN'),
+        ('updating', 'MAGENTA'),
+        ('updated', 'MAGENTA'),
+        ('stopping', 'BLACK'),
+        ('stopped', 'BLACK'),
+        ('removing', 'WHITE'),
+        ('unknown', 'WHITE'),
+    ]
+
+    JOB_STATUSES = [
+        ('running', 'GREEN'),
+        ('done', 'GREEN'),
+        ('error', 'RED'),
+        ('pending', 'WHITE'),
+    ]
+
+    AGENT_STATUSES = [
+        ('online', 'GREEN'),
+        ('offline', 'WHITE'),
+    ]
+
+    def __call__(self, client):
+        with terminal.pager():
+            grouped_resources = self.groups_status()
+            print()
+            self.resources_status(grouped_resources)
+            print()
+            self.jobs_status()
+            print()
+            self.agents_status()
+
+    def groups_status(self):
+        visited_resources = set()
+
+        print('Groups:')
+
+        for group in Group.objects.all():
+            group_members = group.members()
+            self.print_collection_status(
+                '- {name}: {total} resources{details}',
+                group.name or group.id,
+                group_members,
+                self.RESOURCE_STATUSES)
+            visited_resources.update(
+                resource.id for resource in group_members)
+
+        return visited_resources
+
+    def resources_status(self, grouped_resources):
+        print('Resources:')
+
+        resources = Resource.objects.all()
+        all_resources = set(resource.id for resource in resources)
+        ungrouped_resources = all_resources - grouped_resources
+
+        self.print_collection_status(
+            '- {name}: {total} resources{details}',
+            'Total',
+            resources,
+            self.RESOURCE_STATUSES)
+
+        self.print_collection_status(
+            '- {name}: {total} resources{details}',
+            'In groups',
+            grouped_resources)
+
+        self.print_collection_status(
+            '- {name}: {total} resources{details}',
+            'Not in groups',
+            ungrouped_resources)
+
+    def jobs_status(self):
+        jobs = Job.objects.all()
+
+        self.print_collection_status(
+            '{name}: {total} total{details}',
+            'Jobs',
+            jobs,
+            self.JOB_STATUSES)
+
+    def agents_status(self):
+        jobs = Agent.objects.all()
+
+        self.print_collection_status(
+            '{name}: {total} total{details}',
+            'Agents',
+            jobs,
+            self.AGENT_STATUSES)
+
+    def print_collection_status(
+            self, fmt, name, collection, status_colors=None):
+        details = []
+
+        if status_colors:
+            status_count = collections.Counter(
+                obj.status for obj in collection)
+            health_count = collections.Counter(
+                getattr(obj, 'health', 'unknown') for obj in collection)
+
+            del health_count['unknown']
+            status_count += health_count
+
+            for status, color in status_colors:
+                count = status_count[status]
+                if count:
+                    details.append(ColoredString(
+                        '{} {}'.format(count, status), color))
+
+        if details:
+            details = ' ({})'.format(', '.join(str(item) for item in details))
+        else:
+            details = ''
+
+        print(fmt.format(
+            name=ColoredString(name, bold=True),
+            total=len(collection),
+            details=details))
+
+
 class ApplicationImporter(EntityImporter):
 
     _component_link_re = re.compile(
@@ -805,6 +934,7 @@ class StormCtl(CommandLineClient):
 
     top_level_commands = [
         ImportCommand(),
+        StatusCommand(),
     ]
 
     entity_handlers = [
