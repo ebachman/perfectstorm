@@ -14,7 +14,7 @@ def tojson_filter(value):
 
 
 def shquote_filter(value):
-    return shlex.quote(value)
+    return shlex.quote(str(value))
 
 
 def render(template, target, params):
