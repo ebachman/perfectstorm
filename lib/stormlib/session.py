@@ -1,4 +1,5 @@
 import logging
+import os
 import threading
 import urllib.parse
 
@@ -40,12 +41,36 @@ def _get_current_session():
         'Session object in a context manager')
 
 
-def current_session():
-    return CurrentSessionProxy()
+def get_default_address():
+    envvar = os.environ.get('STORM_HOST')
+
+    if not envvar:
+        return DEFAULT_HOST, DEFAULT_PORT
+
+    try:
+        parse_result = urllib.parse.urlparse('//' + envvar)
+
+        if not parse_result.netloc:
+            raise ValueError
+
+        host = parse_result.hostname
+        port = parse_result.port
+
+        if host is None:
+            host = ''
+        if port is None:
+            port = DEFAULT_PORT
+
+        return host, port
+    except (ValueError, TypeError):
+        raise StormConnectionError(
+            'STORM_HOST is not in host:port format: {}'.format(envvar))
 
 
 def connect(host=None, port=None):
     global _global_session
+    if host is None and port is None:
+        host, port = get_default_address()
     session = Session(host, port)
     with _lock:
         _global_session = session
@@ -213,3 +238,6 @@ class CurrentSessionProxy:
         except RuntimeError:
             api_root = 'not connected'
         return '<{}: {}>'.format(self.__class__.__name__, api_root)
+
+
+current_session = CurrentSessionProxy()

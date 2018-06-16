@@ -4,6 +4,7 @@ from .base import Model, Collection
 from .exceptions import StormJobError
 from .fields import StringField, ListField, DictField
 from .heartbeat import Heartbeat
+from .session import current_session
 
 
 __all__ = [
@@ -66,11 +67,11 @@ class GroupMembersCollection(Collection):
 
     def add(self, members):
         member_ids = [member.id for member in members]
-        self._session.post(json={'include': member_ids})
+        current_session.post(json={'include': member_ids})
 
     def remove(self, members):
         member_ids = [member.id for member in members]
-        self._session.post(json={'exclude': member_ids})
+        current_session.post(json={'exclude': member_ids})
 
 
 class Group(Model):
@@ -87,8 +88,7 @@ class Group(Model):
 
     def members(self, *args, **kwargs):
         query = dict(*args, **kwargs)
-        return GroupMembersCollection(
-            group=self, model=Resource, query=query, session=self._session)
+        return GroupMembersCollection(group=self, model=Resource, query=query)
 
 
 class Application(Model):
@@ -127,8 +127,8 @@ class Procedure(Model):
             'params': params,
         }
 
-        data = self._session.post(url, json=data)
-        job = Job(data, session=self._session)
+        data = current_session.post(url, json=data)
+        job = Job(data)
 
         if wait:
             job.wait()
@@ -149,8 +149,8 @@ class Procedure(Model):
             'params': params,
         }
 
-        data = self._session.post(url, json=data)
-        return Subscription(data, session=self._session)
+        data = current_session.post(url, json=data)
+        return Subscription(data)
 
 
 class JobHandler:
@@ -213,7 +213,7 @@ class Job(Model):
 
     def handle(self, owner):
         url = self.url / 'handle'
-        self._session.post(url, json={'owner': owner})
+        current_session.post(url, json={'owner': owner})
         self.reload()
         return JobHandler(self)
 
@@ -221,14 +221,14 @@ class Job(Model):
         if result is None:
             result = {}
         url = self.url / 'complete'
-        self._session.post(url, json={'result': result})
+        current_session.post(url, json={'result': result})
         self.reload()
 
     def fail(self, result=None):
         if result is None:
             result = {}
         url = self.url / 'fail'
-        self._session.post(url, json={'result': result})
+        current_session.post(url, json={'result': result})
         self.reload()
 
     def exception(self, exc):

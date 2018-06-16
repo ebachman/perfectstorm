@@ -1,5 +1,7 @@
 import threading
 
+from .session import current_session
+
 
 HEARTBEAT_DURATION = 60
 DEFAULT_INTERVAL = HEARTBEAT_DURATION // 2
@@ -47,7 +49,7 @@ class Heartbeat:
 
     def _post_heartbeat(self):
         url = self.instance.url / 'heartbeat'
-        self.instance._session.post(url)
+        current_session.post(url)
 
     def start(self, interval=None):
         if self._thread is None:

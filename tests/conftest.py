@@ -6,10 +6,10 @@ CLEANUP_ENABLED = True
 
 def pytest_addoption(parser):
     parser.addoption(
-        '--api-server-host', action='store', default='127.0.0.1',
+        '--api-server-host', action='store',
         help='Host for the Perfect Storm API server')
     parser.addoption(
-        '--api-server-port', action='store', type=int, default=28482,
+        '--api-server-port', action='store', type=int,
         help='Host for the Perfect Storm API server')
     parser.addoption(
         '--no-cleanup', action='store_true',

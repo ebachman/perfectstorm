@@ -87,26 +87,22 @@ class AbstractCollection(metaclass=abc.ABCMeta):
 
 class Collection(AbstractCollection):
 
-    def __init__(self, model, query=None, session=None):
+    def __init__(self, model, query=None):
         super().__init__(model=model)
         if query is None:
             query = {}
         self._query = query
-        if session is None:
-            session = current_session()
-        self._session = session
         self._elems = None
         self._lock = threading.RLock()
 
     def _replace(self, **kwargs):
         kwargs.setdefault('model', self.model)
         kwargs.setdefault('query', self._query)
-        kwargs.setdefault('session', self._session)
         return self.__class__(**kwargs)
 
     @property
     def base_url(self):
-        return self._session.api_root / self.model._path
+        return current_session.api_root / self.model._path
 
     @property
     def url(self):
@@ -163,9 +159,8 @@ class Collection(AbstractCollection):
             if self._elems is not None:
                 return self._elems
 
-            documents = self._session.get(self.url)
-            self._elems = [
-                self.model(doc, session=self._session) for doc in documents]
+            documents = current_session.get(self.url)
+            self._elems = [self.model(doc) for doc in documents]
 
         return self._elems
 
@@ -195,27 +190,21 @@ class EmptyCollection(AbstractCollection):
 
 class Manager:
 
-    def __init__(self, model, session=None):
+    def __init__(self, model):
         self.model = model
-        self._session = session
 
     @property
     def url(self):
-        session = (
-            self._session if self._session is not None else current_session())
-        return session.api_root / self.model._path
+        return current_session.api_root / self.model._path
 
     def none(self):
         return EmptyCollection(model=self.model)
 
     def all(self):
-        return Collection(model=self.model, session=self._session)
+        return Collection(model=self.model)
 
     def filter(self, **kwargs):
-        return Collection(
-            model=self.model,
-            query=kwargs,
-            session=self._session)
+        return Collection(model=self.model, query=kwargs)
 
     def get(self, *args, **kwargs):
         """
@@ -266,7 +255,7 @@ class Model(metaclass=ModelMeta):
 
     id = StringField(null=True)
 
-    def __init__(self, data=None, session=None, **kwargs):
+    def __init__(self, data=None, **kwargs):
         super().__init__()
 
         non_field_kwargs = [key for key in kwargs if key not in self._fields]
@@ -274,10 +263,6 @@ class Model(metaclass=ModelMeta):
             raise TypeError(
                 '__init__() got an unexpected keyword argument {!r}'.format(
                     non_field_kwargs))
-
-        if session is None:
-            session = current_session()
-        self._session = session
 
         self._data = {}
 
@@ -296,17 +281,15 @@ class Model(metaclass=ModelMeta):
             raise AttributeError('No ID has been set')
         return self.objects.url / self.id
 
-    def reload(self, session=None):
+    def reload(self):
         """Fetch the data from the API server for this object."""
-        if session is None:
-            session = self._session
         try:
-            response_data = session.get(self.url)
+            response_data = current_session.get(self.url)
         except StormNotFoundError as exc:
             raise StormObjectNotFound(self.id)
         self._data = response_data
 
-    def save(self, validate=True, session=None):
+    def save(self, validate=True):
         """
         Store the object on the API server. This will either create a new
         entity or update an existing one, depending on whether this object has
@@ -315,39 +298,33 @@ class Model(metaclass=ModelMeta):
         if validate:
             self.validate()
 
-        if session is None:
-            session = self._session
-
         if self.id is not None:
             # If an ID is defined, try to update
             try:
-                self._update(session)
+                self._update()
             except StormObjectNotFound:
                 pass
             else:
                 return
 
         # Either an ID is not defined, or the update returned 404
-        self._create(session)
+        self._create()
 
-    def _create(self, session):
-        response_data = session.post(self.objects.url, json=self._data)
+    def _create(self):
+        response_data = current_session.post(self.objects.url, json=self._data)
         self._data = response_data
 
-    def _update(self, session):
+    def _update(self):
         try:
-            response_data = session.put(self.url, json=self._data)
+            response_data = current_session.put(self.url, json=self._data)
         except StormNotFoundError as exc:
             raise StormObjectNotFound(self.id)
         self._data = response_data
 
-    def delete(self, session=None):
+    def delete(self):
         """Delete this object from the API server."""
-        if session is None:
-            session = self._session
-
         try:
-            session.delete(self.url)
+            current_session.delete(self.url)
         except StormNotFoundError as exc:
             raise StormObjectNotFound(self.id)
 

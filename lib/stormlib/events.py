@@ -120,14 +120,9 @@ class EventMask(namedtuple(
 
 class EventReader:
 
-    def __init__(self, session=None):
-        if session is None:
-            session = current_session()
-        self._session = session
-
     @property
     def url(self):
-        return self._session.api_root / 'v1/events'
+        return current_session.api_root / 'v1/events'
 
     def latest(self, start=None, count=None):
         params = {}
@@ -136,7 +131,7 @@ class EventReader:
         if count is not None:
             params['count'] = count
 
-        data = self._session.get(self.url, params=params)
+        data = current_session.get(self.url, params=params)
         return [Event._from_json(item) for item in data]
 
     def stream(self, start=None):
@@ -144,7 +139,7 @@ class EventReader:
         if start is not None:
             params['start'] = start
 
-        response = self._session.get(
+        response = current_session.get(
             self.url, params=params,
             stream=True, decode_json=False)
 
@@ -217,16 +212,16 @@ class EventFilter:
             return it
 
 
-def latest(filters=None, start=None, count=None, session=None):
-    events = EventReader(session=session).latest(start, count)
+def latest(filters=None, start=None, count=None):
+    events = EventReader().latest(start, count)
     if filters is not None:
         event_filter = EventFilter(filters)
         events = event_filter(events)
     return events
 
 
-def stream(filters=None, start=None, session=None):
-    event_stream = EventReader(session=session).stream(start)
+def stream(filters=None, start=None):
+    event_stream = EventReader().stream(start)
     if filters is not None:
         event_filter = EventFilter(filters)
         event_stream = event_filter(event_stream)
