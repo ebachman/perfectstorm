@@ -1,0 +1,158 @@
+#!/usr/bin/env python3
+
+import collections
+import functools
+import logging
+import urllib.parse
+
+from stormlib import Resource, Group, events
+from stormlib.executors import (
+    AgentExecutorMixin,
+    PollingExecutor,
+    ThreadedJobsExecutor,
+)
+
+from stormswarm import SwarmMixin
+from stormswarm.client import SwarmClient
+
+log = logging.getLogger(__name__)
+
+
+class SwarmNodeLabelingExecutor(
+        SwarmMixin, AgentExecutorMixin, PollingExecutor, ThreadedJobsExecutor):
+
+    # XXX It is possible to create groups with a query that excludes
+    # XXX members of the group itself. Example:
+    # XXX
+    # XXX   group:
+    # XXX     query:
+    # XXX       snapshot.Spec.Labels.storm-grouped: { $exists: false }
+    # XXX
+    # XXX This will result in an infinite label/unlabel loop:
+    # XXX
+    # XXX - during the first iteration, all resources without a
+    # XXX   'storm-grouped' label will be labelled;
+    # XXX - at the second iteration the same resources will be no
+    # XXX   longer part of the group, and will lose their label;
+    # XXX - at this point we are back to our initial conditions:
+    # XXX   the label will be applied again, then removed, and so on...
+
+    def get_labeling(self):
+        resources = {}
+        labels = collections.defaultdict(dict)
+
+        named_groups = Group.objects.filter(name={'$exists': True})
+
+        for group in named_groups:
+            relevant_members = group.members().filter(
+                type={'$in': ('swarm-service', 'swarm-node')},
+                parent=self.swarm.cluster_id,
+            )
+
+            for resource in relevant_members:
+                labels[resource.id]['storm-grouped'] = 'yes'
+                labels[resource.id]['storm-group-' + group.name] = 'yes'
+                resources[resource.id] = resource
+
+        # Get all the resources that have 'storm-grouped' label, but that
+        # do not belong to any group. Those will have their label removed.
+        extra_labels = Resource.objects.filter(**{
+            'id': {'$nin': list(labels)},
+            'type': {'$in': ('swarm-service', 'swarm-node')},
+            'parent': self.swarm.cluster_id,
+            'snapshot.Spec.Labels.storm-grouped': {'$exists': True},
+        })
+
+        for resource in extra_labels:
+            labels[resource.id] = {}
+            resources[resource.id] = resource
+
+        return [
+            (resources[res_id], res_labels)
+            for res_id, res_labels in labels.items()
+            if self.labels_changed(resources[res_id], res_labels)
+        ]
+
+    def labels_changed(self, resource, new_labels):
+        old_labels = resource.snapshot['Spec']['Labels']
+        old_labels = {
+            key: value for key, value in old_labels.items()
+            if key.startswith('storm-group')
+        }
+        return old_labels != new_labels
+
+    def poll_jobs(self):
+        filters = [
+            'created:resource',
+            'updated:resource',
+            'created:group',
+            'updated:group',
+            'deleted:group',
+        ]
+
+        with events.stream(filters) as stream:
+            while True:
+                labeling = self.get_labeling()
+                if labeling:
+                    break
+                next(stream)
+
+        return [
+            functools.partial(self.assign_labels, *args)
+            for args in labeling
+        ]
+
+    def assign_labels(self, resource, labels):
+        if labels:
+            log.debug(
+                'Adding labels to %s %s: %s',
+                resource.type, resource.id, ', '.join(labels.keys()))
+        else:
+            log.debug(
+                'Removing labels from %s %s',
+                resource.type, resource.id)
+
+        spec = resource.snapshot['Spec']
+        old_labels = spec['Labels']
+
+        new_labels = {
+            key: value for key, value in old_labels.items()
+            if not key.startswith('storm-group')
+        }
+        new_labels.update(labels)
+
+        spec['Labels'] = new_labels
+
+        if resource.type == 'swarm-service':
+            update_type = 'services'
+        elif resource.type == 'swarm-node':
+            update_type = 'nodes'
+        else:
+            raise RuntimeError(resource.type)
+
+        update_id = urllib.parse.quote(resource.snapshot['ID'])
+        update_version = resource.snapshot['Version']['Index']
+
+        self.swarm.post(
+            '{}/{}/update'.format(update_type, update_id),
+            params={'version': update_version},
+            json=spec)
+
+
+class SwarmLabelingClient(SwarmClient):
+
+    role = 'labeling'
+
+    configure_loggers = [__name__]
+
+    def run(self):
+        log.info('storm-swarm-labeling version 0.1')
+        log.info('Docker Swarm: {}'.format(self.swarm.address))
+
+        executor = SwarmNodeLabelingExecutor(
+            swarm=self.swarm, agent=self.agent)
+        executor()
+
+
+if __name__ == '__main__':
+    SwarmLabelingClient().main()

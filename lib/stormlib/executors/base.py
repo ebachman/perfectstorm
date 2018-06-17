@@ -1,11 +1,8 @@
 import abc
 import logging
+import threading
 import time
 
-try:
-    import gevent
-except ImportError:
-    gevent = None
 
 log = logging.getLogger(__package__)
 
@@ -157,46 +154,31 @@ class AsyncPollingExecutor(AsyncJobsExecutor, PollingExecutor):
     pass
 
 
-if gevent:
-    class GeventJobsExecutor(AsyncJobsExecutor):
+class ThreadedJobsExecutor(AsyncJobsExecutor):
 
-        def __init__(self, *args, **kwargs):
-            super().__init__(*args, **kwargs)
-            self._greenlets = set()
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._threads = set()
 
-        def spawn_job(self, job):
-            greenlet = gevent.spawn(self.run_job_inner, job)
-            self._greenlets.add(greenlet)
+    def spawn_job(self, job):
+        self._cleanup_threads()
+        thread = threading.Thread(target=self.run_job_inner, args=(job,))
+        self._threads.add(thread)
+        thread.start()
 
-        def run_job_inner(self, job):
-            try:
-                super().run_job_inner(job)
-            finally:
-                greenlet = gevent.getcurrent()
-                self._greenlets.discard(greenlet)
+    def wait_jobs(self):
+        for thread in self._threads:
+            thread.join()
+        self._cleanup_threads()
 
-        def wait_jobs(self):
-            while self._greenlets:
-                gevent.wait(self._greenlets)
-                self._cleanup_greenlets()
+    def stop_jobs(self):
+        log.warn('ThreadedJobsExecutor does not support stopping jobs')
 
-        def stop_jobs(self):
-            while self._greenlets:
-                gevent.killall(self._greenlets)
-                self._cleanup_greenlets()
-
-        def _cleanup_greenlets(self):
-            dead_greenlets = {
-                greenlet for greenlet in self._greenlets if greenlet.dead}
-            self._greenlets -= dead_greenlets
-
-    class GeventPipelineExecutor(GeventJobsExecutor, AsyncPipelineExecutor):
-
-        pass
-
-    class GeventPollingExecutor(GeventJobsExecutor, AsyncPollingExecutor):
-
-        pass
+    def _cleanup_threads(self):
+        to_remove = {
+            thread for thread in self._threads
+            if not thread.is_alive()}
+        self._threads -= to_remove
 
 
 class AgentExecutorMixin:

@@ -1,0 +1,295 @@
+#!/usr/bin/env python3
+
+import logging
+import re
+
+from stormlib import Resource
+from stormlib.exceptions import StormBadRequestError
+from stormlib.executors import DiscoveryExecutor, DiscoveryProbe
+
+from stormswarm import SwarmMixin
+from stormswarm.client import SwarmClient
+
+log = logging.getLogger(__name__)
+
+IMAGE_REGEX = re.compile(
+    r'^(?:([^/:@]+)/)?([^/:@]+)(?::([^/:@]+))?(?:@([^/@]+))?$')
+
+
+def canonical_image_name(image):
+    match = IMAGE_REGEX.match(image)
+    repository, name, tag, digest = match.groups()
+
+    parts = []
+
+    if repository and repository != 'library':
+        parts += [repository, '/']
+
+    parts += [name, ':', tag or 'latest']
+
+    if digest:
+        parts += ['@', digest]
+
+    return ''.join(parts)
+
+
+class SwarmClusterProbe(SwarmMixin, DiscoveryProbe):
+
+    resource_type = 'swarm-cluster'
+
+    def get_snapshots(self):
+        data = self.swarm.get('info').json()
+        # Remove SystemTime to avoid unnecessary updates
+        del data['SystemTime']
+        return [data]
+
+    def get_internal_id(self, data):
+        return data['Swarm']['Cluster']['ID']
+
+    def model_resource(self, data):
+        return Resource(
+            names=[
+                data['Swarm']['Cluster']['Spec']['Name'],
+                data['Swarm']['Cluster']['ID'],
+            ],
+            status='running',
+        )
+
+
+class SwarmServiceProbe(SwarmMixin, DiscoveryProbe):
+
+    resource_type = 'swarm-service'
+
+    def get_snapshots(self):
+        return self.swarm.get('services').json()
+
+    def get_internal_id(self, data):
+        return data['ID']
+
+    def get_service_names(self, data):
+        return [
+            data['Spec']['Name'],
+            data['ID'],
+        ]
+
+    def get_service_image(self, data):
+        return canonical_image_name(
+            data['Spec']['TaskTemplate']['ContainerSpec']['Image'])
+
+    def model_resource(self, data):
+        return Resource(
+            parent=self.swarm.cluster_id,
+            cluster=self.swarm.cluster_id,
+            names=self.get_service_names(data),
+            image=self.get_service_image(data),
+            status='running',
+        )
+
+
+class SwarmTaskProbe(SwarmMixin, DiscoveryProbe):
+
+    resource_type = 'swarm-task'
+
+    def __init__(self, executor, *args, **kwargs):
+        self.executor = executor
+        super().__init__(*args, **kwargs)
+
+    def get_snapshots(self):
+        return self.swarm.get('tasks').json()
+
+    def get_internal_id(self, data):
+        return data['ID']
+
+    def get_task_names(self, data):
+        names = []
+
+        try:
+            service_id = data['ServiceID']
+            service_data = self.executor.snapshots[service_id].data
+            service_name = service_data['Spec']['Name']
+        except KeyError:
+            service_name = None
+
+        if service_name:
+            task_name_suffix = (
+                str(data['Slot']) if 'Slot' in data else data['NodeID'])
+            task_name = '.'.join((service_name, task_name_suffix))
+
+            names.append(task_name)
+            names.append('.'.join((task_name, data['ID'])))
+
+        names.append(data['ID'])
+
+        try:
+            names.append(data['Status']['ContainerStatus']['ContainerID'])
+        except KeyError:
+            pass
+
+        return names
+
+    def get_task_image(self, data):
+        return canonical_image_name(data['Spec']['ContainerSpec']['Image'])
+
+    def get_task_status(self, data):
+        # Map the 'swarm state' to ('state', 'transitioning state').
+        # 'state' is used when state == desired_state (see below).
+        # 'transitioning state' is used when state != desired_state, i.e.
+        # when Swarm has to change from a state to another.
+        status_map = {
+            'new': 'created',
+            'allocated': 'created',
+            'pending': 'starting',
+            'assigned': 'starting',
+            'accepted': 'starting',
+            'preparing': 'starting',
+            'ready': 'starting',
+            'starting': 'starting',
+            'running': 'running',
+            'complete': 'stopped',
+            'shutdown': 'stopped',
+            'failed': 'error',
+            'rejected': 'error',
+            'remove': 'stopped',
+            'orphaned': 'error',
+        }
+
+        try:
+            status = status_map[data['Status']['State']]
+            desired_status = status_map[data['DesiredState']]
+        except KeyError:
+            return 'unknown'
+
+        if status == desired_status or status == 'error':
+            return status
+
+        transitions = {
+            'created': 'creating',
+            'started': 'starting',
+            'stopped': 'stopping',
+        }
+
+        return transitions.get(desired_status, desired_status)
+
+    def get_task_health(self, data):
+        if ('Healthcheck' in data['Spec']['ContainerSpec'] and
+                data['Status']['State'] == 'running'):
+            # If a task has health checks configured and it is running, it
+            # means it is healthy. If the health checks were reporting errors,
+            # then Swarm would automatically restart the task.
+            return 'healthy'
+        return 'unknown'
+
+    def model_resource(self, data):
+        return Resource(
+            parent=data['ServiceID'],
+            cluster=self.swarm.cluster_id,
+            host=data.get('NodeID'),
+            names=self.get_task_names(data),
+            image=self.get_task_image(data),
+            status=self.get_task_status(data),
+            health=self.get_task_health(data),
+        )
+
+    def save_resource(self, resource):
+        try:
+            resource.save()
+        except StormBadRequestError:
+            # It can happen that some tasks have a ServiceID field, but
+            # the corresponding service has been deleted. This situation
+            # may occur, for example, after deleing a service: the service
+            # itself is gone, but its tasks still need to be removed.
+            #
+            # In such situation, the Storm API Server will complain that
+            # 'parent' does not reference a Resource and will refuse to
+            # save the task with a StormBadRequestError. For this reason,
+            # we try again, this time unsetting the 'parent' field.
+            if resource.parent is None:
+                raise
+            resource.parent = None
+            resource.save()
+
+
+class SwarmNodeProbe(SwarmMixin, DiscoveryProbe):
+
+    resource_type = 'swarm-node'
+
+    def get_snapshots(self):
+        return self.swarm.get('nodes').json()
+
+    def get_internal_id(self, data):
+        return data['ID']
+
+    def get_node_names(self, data):
+        return [
+            data['Description']['Hostname'],
+            data['ID'],
+        ]
+
+    def get_node_status(self, data):
+        docker2storm_status = {
+            'disconnected': 'stopped',
+            'down': 'stopped',
+            'ready': 'running',
+        }
+
+        return docker2storm_status.get(data['Status']['State'], 'unknown')
+
+    def get_node_health(self, data):
+        reachability2health = {
+            'reachable': 'healthy',
+            'unreachable': 'unhealthy',
+        }
+
+        try:
+            return reachability2health[data['ManagerStatus']['Reachability']]
+        except KeyError:
+            return 'unknown'
+
+    def model_resource(self, data):
+        return Resource(
+            parent=self.swarm.cluster_id,
+            cluster=self.swarm.cluster_id,
+            names=[
+                data['Description']['Hostname'],
+                data['ID'],
+            ],
+            status=self.get_node_status(data),
+            health=self.get_node_health(data),
+        )
+
+
+class SwarmDiscoveryExecutor(SwarmMixin, DiscoveryExecutor):
+
+    def get_probes(self):
+        return [
+            SwarmClusterProbe(self.swarm),
+            SwarmNodeProbe(self.swarm),
+            SwarmServiceProbe(self.swarm),
+            SwarmTaskProbe(self, self.swarm),
+        ]
+
+
+class SwarmDiscoveryClient(SwarmClient):
+
+    role = 'discovery'
+
+    configure_loggers = [__name__]
+
+    def add_arguments(self, parser):
+        super().add_arguments(parser)
+        parser.add_argument(
+            '-f', '--force-discovery', action='store_true',
+            help='Ignore resources already discovered')
+
+    def run(self):
+        log.info('storm-swarm-discovery version 0.1')
+        log.info('Docker Swarm: {}'.format(self.swarm.address))
+
+        executor = SwarmDiscoveryExecutor(
+            swarm=self.swarm, agent=self.agent,
+            delete_stored=self.options.force_discovery)
+        executor()
+
+
+if __name__ == '__main__':
+    SwarmDiscoveryClient().main()

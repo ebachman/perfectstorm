@@ -7,7 +7,4 @@ setup(
     install_requires=[
         'requests >= 2.13, < 3',
     ],
-    extras_require={
-        'gevent': ['gevent >= 1.2, < 1.3'],
-    },
 )

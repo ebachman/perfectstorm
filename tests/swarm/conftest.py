@@ -3,33 +3,38 @@ import random
 import pytest
 
 
-@pytest.fixture(scope='session', autouse=True)
-def swarm_cluster():
+def pick_cluster(agent_types):
     from stormlib import Agent, Resource
 
-    swarm_agents = Agent.objects.filter(**{
-        'type': 'swarm',
-        'status': 'online',
-        'options.autoLabeling': True,
-        'options.procedureRunner': True,
-    })
+    # Get all the swarm clusters from the API Server
+    all_clusters = {
+        cluster.snapshot['Swarm']['Cluster']['ID']: cluster
+        for cluster in Resource.objects.filter(type='swarm-cluster')}
+    cluster_ids = set(all_clusters)
 
-    if not swarm_agents:
-        if not Agent.objects.filter(type='swarm', status='online'):
-            pytest.skip('storm-swarm not running')
-        else:
-            pytest.skip(
-                'no storm-swarm running with autoLabeling and '
-                'procedureRunner enabled')
+    # For each agent type, get the clusters managed by those agents
+    for agent_type in agent_types:
+        agents = Agent.objects.filter(type=agent_type, status='online')
+        if not agents:
+            pytest.skip('storm-{} not running'.format(agent_type))
+        managed_cluster_ids = {agent.options['clusterId'] for agent in agents}
+        # Keep only the clusters that are managed by the agents that
+        # are required
+        cluster_ids &= managed_cluster_ids
 
-    swarm_agent_ids = [agent.id for agent in swarm_agents]
-    swarm_clusters = Resource.objects.filter(
-        type='swarm-cluster', owner={'$in': swarm_agent_ids})
+    if not cluster_ids:
+        pytest.skip(
+            'no swarm clusters managed by {}'.format(', '.join(
+                'swarm-' + agent_type for agent_type in agent_types)))
 
-    if not swarm_clusters:
-        pytest.skip('no swarm clusters detected')
+    chosen_id = random.choice(list(cluster_ids))
+    return all_clusters[chosen_id]
 
-    return random.choice(swarm_clusters)
+
+@pytest.fixture(scope='session', autouse=True)
+def swarm_cluster():
+    return pick_cluster([
+        'swarm-discovery', 'swarm-procedure', 'swarm-labeling'])
 
 
 @pytest.fixture(scope='session')
